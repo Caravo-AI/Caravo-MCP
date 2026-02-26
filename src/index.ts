@@ -398,8 +398,13 @@ function registerAllTools(server: McpServer) {
       },
     },
     async ({ query, tag, provider, page = 1, per_page = 10 }) => {
-      page = Math.max(1, Math.floor(page));
-      per_page = Math.max(1, Math.min(100, Math.floor(per_page)));
+      if (!Number.isInteger(page) || page < 1) {
+        return { content: [{ type: "text" as const, text: "Error: page must be a positive integer" }], isError: true };
+      }
+      if (!Number.isInteger(per_page) || per_page < 1) {
+        return { content: [{ type: "text" as const, text: "Error: per_page must be a positive integer" }], isError: true };
+      }
+      per_page = Math.min(100, per_page);
       const params = new URLSearchParams();
       if (query) params.set("query", query);
       if (tag) params.set("tag", tag);
@@ -650,6 +655,13 @@ function registerAllTools(server: McpServer) {
       },
     },
     async ({ status = "open", page = 1, per_page = 20 }) => {
+      if (!Number.isInteger(page) || page < 1) {
+        return { content: [{ type: "text" as const, text: "Error: page must be a positive integer" }], isError: true };
+      }
+      if (!Number.isInteger(per_page) || per_page < 1) {
+        return { content: [{ type: "text" as const, text: "Error: per_page must be a positive integer" }], isError: true };
+      }
+      per_page = Math.min(100, per_page);
       const params = new URLSearchParams();
       params.set("status", status);
       params.set("page", String(page));
