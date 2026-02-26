@@ -1,0 +1,32 @@
+{
+  "name": "@caravo/mcp",
+  "version": "1.0.0",
+  "description": "Local stdio MCP server for Caravo with built-in x402 wallet",
+  "type": "module",
+  "bin": {
+    "caravo-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "node --experimental-strip-types src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "viem": "^2.46.3",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.8.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Caravo-AI/Caravo-MCP"
+  },
+  "homepage": "https://caravo.ai",
+  "license": "MIT",
+  "files": [
+    "dist/"
+  ]
+}
