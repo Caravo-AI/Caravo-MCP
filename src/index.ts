@@ -18,14 +18,36 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { loadOrCreateWallet } from "./wallet.js";
 import { fetchWithX402 } from "./x402.js";
 
 const API_BASE = process.env.CARAVO_URL ?? "https://caravo.ai";
 
-// Optional API key: if it looks like a real key (am_ prefix), uses balance auth; otherwise x402
-const RAW_KEY = process.env.CARAVO_API_KEY;
-const API_KEY = RAW_KEY && RAW_KEY.startsWith("am_") ? RAW_KEY : undefined;
+// Config file: ~/.caravo/config.json — stores API key set via `login` tool
+const CONFIG_DIR = join(homedir(), ".caravo");
+const CONFIG_FILE = join(CONFIG_DIR, "config.json");
+
+function loadConfig(): { api_key?: string } {
+  try {
+    if (!existsSync(CONFIG_FILE)) return {};
+    return JSON.parse(readFileSync(CONFIG_FILE, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function saveConfig(data: { api_key?: string }): void {
+  mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
+}
+
+// Optional API key: env takes priority, then config file; must have am_ prefix
+const RAW_KEY = process.env.CARAVO_API_KEY || loadConfig().api_key;
+// Mutable so the `login` tool can update it mid-session
+let API_KEY: string | undefined = RAW_KEY && RAW_KEY.startsWith("am_") ? RAW_KEY : undefined;
 
 const wallet = loadOrCreateWallet();
 
@@ -346,6 +368,98 @@ function registerAllTools(server: McpServer) {
           },
         ],
       };
+    }
+  );
+
+  // ── Login (browser-based account connect) ────────────────────────────────────
+  server.registerTool(
+    "login",
+    {
+      description:
+        "Connect your Caravo account to enable balance payments and favorites sync. " +
+        "Opens caravo.ai in your browser — sign in once and the API key is saved automatically. " +
+        "Run this if you started with x402 payments and now want to use your account balance.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        // 1. Create one-time session
+        const initRes = await fetch(`${API_BASE}/api/auth/mcp-session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const { token, url } = (await initRes.json()) as { token: string; url: string };
+
+        // 2. Open browser
+        const { exec } = await import("child_process");
+        const opener =
+          process.platform === "darwin"
+            ? `open "${url}"`
+            : process.platform === "win32"
+            ? `start "" "${url}"`
+            : `xdg-open "${url}"`;
+        exec(opener);
+
+        process.stderr.write(`[caravo] login: opened ${url}\n`);
+
+        // 3. Poll every 2s for up to 5 minutes
+        const deadline = Date.now() + 5 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const pollRes = await fetch(
+            `${API_BASE}/api/auth/mcp-session?token=${encodeURIComponent(token)}`
+          );
+          const poll = (await pollRes.json()) as {
+            status: string;
+            api_key?: string;
+          };
+
+          if (poll.status === "completed" && poll.api_key) {
+            // 4. Save to config + activate for this session
+            API_KEY = poll.api_key;
+            saveConfig({ api_key: poll.api_key });
+            process.stderr.write(`[caravo] login: API key saved to ${CONFIG_FILE}\n`);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `✓ Logged in to Caravo!`,
+                    ``,
+                    `API key saved to ${CONFIG_FILE}`,
+                    `Balance payments are now active for this session.`,
+                    `Restart the MCP server to also load your favorited tools.`,
+                  ].join("\n"),
+                },
+              ],
+            };
+          }
+
+          if (poll.status === "expired") {
+            return {
+              content: [{ type: "text" as const, text: "Login expired. Run login again to retry." }],
+              isError: true,
+            };
+          }
+          // status === "pending" — keep polling
+        }
+
+        return {
+          content: [{ type: "text" as const, text: "Login timed out after 5 minutes. Run login again." }],
+          isError: true,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Login failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -923,7 +1037,7 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "1.0.0",
+    version: "0.1.4",
   },
   {
     instructions: [
