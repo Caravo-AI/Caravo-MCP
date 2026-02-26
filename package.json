@@ -1,6 +1,6 @@
 {
   "name": "@caravo/mcp",
-  "version": "1.0.0",
+  "version": "0.1.1",
   "description": "Local stdio MCP server for Caravo with built-in x402 wallet",
   "type": "module",
   "bin": {

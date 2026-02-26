@@ -23,8 +23,9 @@ import { fetchWithX402 } from "./x402.js";
 
 const API_BASE = process.env.CARAVO_URL ?? "https://caravo.ai";
 
-// Optional API key: if set, uses balance auth instead of x402
-const API_KEY = process.env.CARAVO_API_KEY;
+// Optional API key: if it looks like a real key (am_ prefix), uses balance auth; otherwise x402
+const RAW_KEY = process.env.CARAVO_API_KEY;
+const API_KEY = RAW_KEY && RAW_KEY.startsWith("am_") ? RAW_KEY : undefined;
 
 const wallet = loadOrCreateWallet();
 
@@ -55,9 +56,17 @@ async function apiPost(path: string, body: unknown) {
     headers: baseHeaders(),
     body: JSON.stringify(body),
   };
-  const r = API_KEY
-    ? await fetch(url, opts)
-    : await fetchWithX402(url, opts, wallet);
+  if (!API_KEY) return (await fetchWithX402(url, opts, wallet)).json();
+  const r = await fetch(url, opts);
+  if (r.status === 401 || r.status === 403) {
+    process.stderr.write("[caravo] API key auth failed, falling back to x402\n");
+    const x402Opts: RequestInit = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    };
+    return (await fetchWithX402(url, x402Opts, wallet)).json();
+  }
   return r.json();
 }
 
