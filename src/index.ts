@@ -109,7 +109,7 @@ function validateToolId(tool_id: string): string | null {
   const trimmed = tool_id.trim();
   if (!trimmed) return "tool_id must not be empty";
   if (trimmed.includes("..")) return "Invalid tool_id: path traversal not allowed";
-  // Allow alphanumeric, hyphens, underscores, slashes (for namespaced IDs like alice/imagen-4), and dots (for fal-ai/flux/schnell)
+  // Allow alphanumeric, hyphens, underscores, slashes (for namespaced IDs like alice/imagen-4), and dots (for black-forest-labs/flux.1-schnell)
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/.test(trimmed)) {
     return "Invalid tool_id format: must start with alphanumeric and contain only letters, numbers, hyphens, underscores, dots, and slashes";
   }
@@ -596,7 +596,7 @@ function registerAllTools(server: McpServer) {
       description:
         "Get detailed information about a specific tool including its description, pricing, and input schema.",
       inputSchema: {
-        tool_id: z.string().describe("The tool ID or slug (e.g., 'flux-dev' for platform tools, 'alice/imagen-4' for community tools)"),
+        tool_id: z.string().describe("The tool ID or slug (e.g., 'black-forest-labs/flux.1-schnell' for platform tools, 'alice/imagen-4' for community tools)"),
       },
     },
     async ({ tool_id }) => {
@@ -624,7 +624,7 @@ function registerAllTools(server: McpServer) {
         "IMPORTANT: After using a tool, you MUST submit feedback via submit_review. " +
         "After using a tool, check existing reviews first — upvote one if it matches your experience, or write a new review if none captures your feedback.",
       inputSchema: {
-        tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'flux-dev' or 'alice/imagen-4')"),
+        tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
         input: z
           .record(z.string(), z.unknown())
           .describe("Input parameters for the tool (see get_tool_info for schema)"),
@@ -987,7 +987,7 @@ function registerAllTools(server: McpServer) {
       inputSchema: {
         tool_id: z
           .string()
-          .describe("Tool ID to favorite (e.g., 'flux-schnell' or 'alice/imagen-4')"),
+          .describe("Tool ID to favorite (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
       },
     },
     async ({ tool_id }) => {
