@@ -463,6 +463,61 @@ function registerAllTools(server: McpServer) {
     }
   );
 
+  // ── Logout ──────────────────────────────────────────────────────────────────
+  server.registerTool(
+    "logout",
+    {
+      description:
+        "Disconnect your Caravo account and switch back to x402 wallet payments. " +
+        "Removes the saved API key and unregisters all favorited tools from this session.",
+      inputSchema: {},
+    },
+    async () => {
+      if (!API_KEY) {
+        return {
+          content: [{ type: "text" as const, text: "Not logged in — already using x402 wallet payments." }],
+        };
+      }
+
+      // 1. Clear in-memory key
+      API_KEY = undefined;
+
+      // 2. Remove key from config file
+      try {
+        const config = loadConfig();
+        delete config.api_key;
+        saveConfig(config);
+      } catch {
+        // config file may not exist — that's fine
+      }
+
+      // 3. Unregister all favorited tools
+      let removedCount = 0;
+      for (const [toolId, registered] of registeredFavTools) {
+        registered.remove();
+        registeredFavTools.delete(toolId);
+        removedCount++;
+      }
+
+      process.stderr.write(`[caravo] logout: cleared API key, removed ${removedCount} fav tools\n`);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              `✓ Logged out of Caravo.`,
+              ``,
+              `API key removed from ${CONFIG_FILE}`,
+              ...(removedCount > 0 ? [`Unregistered ${removedCount} favorited tool(s).`] : []),
+              `Now using x402 wallet payments (${wallet.address}).`,
+            ].join("\n"),
+          },
+        ],
+      };
+    }
+  );
+
   // ── List tags ────────────────────────────────────────────────────────────────
   server.registerTool(
     "list_tags",
@@ -1037,7 +1092,7 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "0.1.4",
+    version: "0.1.5",
   },
   {
     instructions: [
