@@ -8,7 +8,7 @@ Local stdio MCP server for [Caravo](https://caravo.ai) with built-in x402 wallet
 # Claude Code
 claude mcp add caravo -- npx -y @caravo/mcp@latest
 
-# Optional: with API key for balance auth + favorites
+# Optional: with API key for balance auth (favorites work either way)
 claude mcp add caravo -e CARAVO_API_KEY=am_xxx -- npx -y @caravo/mcp@latest
 ```
 
@@ -30,9 +30,9 @@ claude mcp add caravo -e CARAVO_API_KEY=am_xxx -- npx -y @caravo/mcp@latest
 | `list_tags` | List all categories |
 | `list_providers` | List all providers |
 | `get_wallet_info` | Get wallet address and USDC balance |
-| `favorite_tool` | Bookmark a tool (requires API key) |
-| `unfavorite_tool` | Remove bookmark (requires API key) |
-| `list_favorites` | List bookmarked tools (requires API key) |
+| `favorite_tool` | Bookmark a tool (server with API key, local without) |
+| `unfavorite_tool` | Remove bookmark (server with API key, local without) |
+| `list_favorites` | List bookmarked tools (server with API key, local without) |
 | `list_tool_requests` | Browse tool requests |
 | `request_tool` | Request a new tool |
 | `upvote_tool_request` | Upvote a tool request |
