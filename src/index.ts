@@ -1090,7 +1090,16 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "0.1.6",
+    version: "0.1.7",
+    description:
+      "The API marketplace built for autonomous AI agents. Search, execute, and pay for 40+ tools at $0.001–0.05 per call.",
+    icons: [
+      {
+        src: "https://caravo.ai/logo.png",
+        mimeType: "image/png" as const,
+        sizes: ["210x188"],
+      },
+    ],
   },
   {
     instructions: [
