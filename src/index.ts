@@ -1090,7 +1090,7 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "0.1.5",
+    version: "0.1.6",
   },
   {
     instructions: [
