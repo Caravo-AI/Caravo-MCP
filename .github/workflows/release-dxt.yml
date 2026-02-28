@@ -29,20 +29,23 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="v${{ steps.version.outputs.version }}"
+          NOTES="Claude Desktop .dxt extension bundling @caravo/mcp@${{ steps.version.outputs.version }}.
+
+          **Install:** Download caravo.dxt and double-click to install in Claude Desktop."
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" dxt/caravo.dxt --clobber
           else
             gh release create "$VERSION" dxt/caravo.dxt \
               --title "Caravo MCP $VERSION" \
               --latest \
-              --notes "Claude Desktop .dxt extension bundling @caravo/mcp@${{ steps.version.outputs.version }}.
-
-**Install:** Download \`caravo.dxt\` and double-click to install in Claude Desktop."
+              --notes "$NOTES"
           fi
