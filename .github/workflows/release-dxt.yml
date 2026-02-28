@@ -21,8 +21,13 @@ jobs:
       - name: Build MCP server
         run: npm ci && npm run build
 
-      - name: Install DXT dependencies
-        run: cd dxt && npm install
+      - name: Prepare DXT server directory
+        run: |
+          mkdir -p dxt/server
+          cp -r dist/* dxt/server/
+
+      - name: Install DXT runtime dependencies
+        run: cd dxt && npm install --omit=dev
 
       - name: Pack DXT
         run: cd dxt && npx @anthropic-ai/mcpb pack . caravo.dxt

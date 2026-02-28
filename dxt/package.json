@@ -4,6 +4,8 @@
   "private": true,
   "description": "DXT packaging for @caravo/mcp",
   "dependencies": {
-    "@caravo/mcp": "file:.."
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "viem": "^2.46.3",
+    "zod": "^3.24.0"
   }
 }
