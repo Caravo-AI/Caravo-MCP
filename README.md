@@ -49,8 +49,7 @@ npm run dev    # uses --experimental-strip-types
 
 - [caravo.ai](https://caravo.ai) — Official website and marketplace
 - [Caravo-CLI](https://github.com/Caravo-AI/Caravo-CLI) — Command-line interface (`@caravo/cli`)
-- [Agent-Skills](https://github.com/Caravo-AI/Agent-Skills) — Skills for non-MCP agents (OpenClaw, Cursor, Codex, etc.)
-- [API-Marketplace](https://github.com/Azure-Vision/API-Marketplace) — Web platform source code
+- [Agent-Skills](https://github.com/Caravo-AI/Agent-Skills) — Agent skill via Caravo CLI — no MCP required
 
 ## License
 
