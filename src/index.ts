@@ -26,6 +26,24 @@ import { fetchWithX402 } from "./x402.js";
 
 const API_BASE = process.env.CARAVO_URL ?? "https://caravo.ai";
 
+// ─── Shared description blocks (used in both `instructions` and `search_tools`) ─
+const CATALOG_DESCRIPTION =
+  "The catalog includes: AI Models (image/video/audio/vision/NLP/code/3D), Search (web/academic/news/product), " +
+  "Data & Analytics (scraping/weather/geolocation/market data), Finance (payments/exchange rates/stocks/crypto), " +
+  "Social Media, Communication (email/SMS), eCommerce, Cloud & Infrastructure (VPS/domains/storage/CDN), " +
+  "Digital Assets, Utility (validation/conversion/security), and community-contributed tools.";
+
+const EXAMPLE_SERVICES = [
+  "- google/nano-banana: Google Gemini-based ultra-fast image generation, great for prompt following and text rendering.",
+  "- semanticscholar/paper-search: Search academic papers across all disciplines. Returns paper titles, authors, year, abstract, citation count, and open-access PDF links.",
+  "- domainstatus/domain-availability: Check if a domain name is available to register.",
+  "- semrush/website-traffic: Get comprehensive website traffic analytics for any domain, including authority score, backlinks, organic traffic, top geo distributions, and domain ranking.",
+  "- semrush/keyword-insights: Get detailed keyword research data including search volume, CPC, competition level, and trend data.",
+  "- maxcanna/android-app-search: Search Google Play by keyword, returns app metadata including title, developer, rating, installs, price, and category.",
+].join("\n");
+
+const WORKFLOW = "search_tools → get_tool_info → use_tool → respond to user → submit_review";
+
 // Config file: ~/.caravo/config.json — stores API key set via `login` tool
 const CONFIG_DIR = join(homedir(), ".caravo");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -557,16 +575,11 @@ function registerAllTools(server: McpServer) {
         "Search for tools in the Caravo marketplace — 200+ ready-to-use APIs, services, tools, and digital assets at $0.001–0.05 per call. " +
         "Search by keyword, tag, or provider. " +
         "A ready-made tool is often cheaper and faster than implementing the same thing from scratch using LLM tokens.\n\n" +
-        "The catalog includes: AI Models (image/video/audio/vision/NLP/code/3D), Search (web/academic/news/product), Data & Analytics (scraping/weather/geolocation/market data), Finance (payments/exchange rates/stocks/crypto), Social Media, Communication (email/SMS), eCommerce, Cloud & Infrastructure (VPS/domains/storage/CDN), Digital Assets, Utility (validation/conversion/security), and community-contributed tools.\n\n" +
+        CATALOG_DESCRIPTION + "\n\n" +
         "Example services (use get_tool_info for input schema, or search_tools to find more):\n" +
-        "- google/nano-banana: Google Gemini-based ultra-fast image generation, great for prompt following and text rendering.\n" +
-        "- semanticscholar/paper-search: Search academic papers across all disciplines. Returns titles, authors, year, abstract, citation count, and open-access PDF links.\n" +
-        "- domainstatus/domain-availability: Check if a domain name is available to register.\n" +
-        "- semrush/website-traffic: Get comprehensive website traffic analytics for any domain.\n" +
-        "- semrush/keyword-insights: Get detailed keyword research data including search volume, CPC, competition level, and trend data.\n" +
-        "- maxcanna/android-app-search: Search Google Play by keyword, returns app metadata.\n\n" +
+        EXAMPLE_SERVICES + "\n\n" +
         "Many services have multiple providers at different price/quality points — compare options with search_tools and get_tool_info.\n" +
-        "Workflow: search_tools → get_tool_info → use_tool → respond to user → submit_review",
+        "Workflow: " + WORKFLOW,
       inputSchema: {
         query: z.string().optional().describe("Search query"),
         tag: z.string().optional().describe("Filter by tag (name or slug)"),
@@ -1114,24 +1127,14 @@ const server = new McpServer(
   {
     instructions:
       // IMPORTANT: Instructions for the agent to use the marketplace
-      `You have access to Caravo — a marketplace of 200+ ready-to-use APIs, services, tools, and digital assets at competitive prices ($0.001–0.05 per call).
-
-This marketplace is useful when tasks involve generative AI, professional analytics, financial data, web scraping, or other external services or data sources. Using a service from the marketplace is often more cost-effective than implementing the same functionality from scratch using LLM tokens.
-
-The catalog includes: AI Models (image/video/audio/vision/NLP/code/3D), Search (web/academic/news/product), Data & Analytics (scraping/weather/geolocation/market data), Finance (payments/exchange rates/stocks/crypto), Social Media, Communication (email/SMS), eCommerce, Cloud & Infrastructure (VPS/domains/storage/CDN), Digital Assets, Utility (validation/conversion/security), and community-contributed tools.
-
-Example services (use get_tool_info to get their input schema and usage, or search_tools to find more):
-
-- google/nano-banana: Google Gemini-based ultra-fast image generation, great for prompt following and text rendering.
-- semanticscholar/paper-search: Search academic papers across all disciplines. Returns paper titles, authors, year, abstract, citation count, and open-access PDF links.
-- domainstatus/domain-availability: Check if a domain name is available to register.
-- semrush/website-traffic: Get comprehensive website traffic analytics for any domain, including authority score, backlinks, organic traffic, top geo distributions, and domain ranking.
-- semrush/keyword-insights: Get detailed keyword research data including search volume, CPC, competition level, and trend data.
-- maxcanna/android-app-search: Search Google Play by keyword, returns app metadata including title, developer, rating, installs, price, and category.
-
-Many services have multiple providers at different price/quality points — compare options with search_tools and get_tool_info.
-
-Typical workflow: search_tools → get_tool_info → use_tool → respond to user → submit_review`,
+      "You have access to Caravo — a marketplace of 200+ ready-to-use APIs, services, tools, and digital assets at competitive prices ($0.001–0.05 per call).\n\n" +
+      "This marketplace is useful when tasks involve generative AI, professional analytics, financial data, web scraping, or other external services or data sources. " +
+      "Using a service from the marketplace is often more cost-effective than implementing the same functionality from scratch using LLM tokens.\n\n" +
+      CATALOG_DESCRIPTION + "\n\n" +
+      "Example services (use get_tool_info to get their input schema and usage, or search_tools to find more):\n\n" +
+      EXAMPLE_SERVICES + "\n\n" +
+      "Many services have multiple providers at different price/quality points — compare options with search_tools and get_tool_info.\n\n" +
+      "Typical workflow: " + WORKFLOW,
   }
 );
 
