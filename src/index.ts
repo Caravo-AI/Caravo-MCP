@@ -335,237 +335,7 @@ async function loadFavoriteTools(server: McpServer) {
 // ─── Static management + meta tools ───────────────────────────────────────────
 
 function registerAllTools(server: McpServer) {
-  // ── Wallet info ──────────────────────────────────────────────────────────────
-  server.registerTool(
-    "get_wallet_info",
-    {
-      description:
-        "Get your local x402 wallet address and USDC balance. Send USDC on Base to this address to fund automatic payments.",
-      inputSchema: {},
-    },
-    async () => {
-      let balance = "unknown (check manually)";
-      try {
-        const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-        const data =
-          "0x70a08231000000000000000000000000" +
-          wallet.address.slice(2).toLowerCase();
-        const r = await fetch("https://mainnet.base.org", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "eth_call",
-            params: [{ to: USDC, data }, "latest"],
-          }),
-        });
-        const d = (await r.json()) as { result?: string };
-        if (d.result && d.result !== "0x") {
-          balance = (parseInt(d.result, 16) / 1e6).toFixed(6) + " USDC";
-        }
-      } catch {
-        // ignore
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                address: wallet.address,
-                network: "Base mainnet (eip155:8453)",
-                usdc_balance: balance,
-                note: "Send USDC on Base to this address to enable automatic x402 payments.",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── Login (browser-based account connect) ────────────────────────────────────
-  server.registerTool(
-    "login",
-    {
-      description:
-        "Connect your Caravo account to enable balance payments and favorites sync. " +
-        "Opens caravo.ai in your browser — sign in once and the API key is saved automatically. " +
-        "Run this if you started with x402 payments and now want to use your account balance.",
-      inputSchema: {},
-    },
-    async () => {
-      try {
-        // 1. Create one-time session
-        const initRes = await fetch(`${API_BASE}/api/auth/mcp-session`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-        const { token, url } = (await initRes.json()) as { token: string; url: string };
-
-        // 2. Open browser
-        const { exec } = await import("child_process");
-        const opener =
-          process.platform === "darwin"
-            ? `open "${url}"`
-            : process.platform === "win32"
-              ? `start "" "${url}"`
-              : `xdg-open "${url}"`;
-        exec(opener);
-
-        process.stderr.write(`[caravo] login: opened ${url}\n`);
-
-        // 3. Poll every 2s for up to 5 minutes
-        const deadline = Date.now() + 5 * 60 * 1000;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 2000));
-          const pollRes = await fetch(
-            `${API_BASE}/api/auth/mcp-session?token=${encodeURIComponent(token)}`
-          );
-          const poll = (await pollRes.json()) as {
-            status: string;
-            api_key?: string;
-          };
-
-          if (poll.status === "completed" && poll.api_key) {
-            // 4. Save to config + activate for this session
-            API_KEY = poll.api_key;
-            saveConfig({ api_key: poll.api_key });
-            process.stderr.write(`[caravo] login: API key saved to ${CONFIG_FILE}\n`);
-
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text: [
-                    `✓ Logged in to Caravo!`,
-                    ``,
-                    `API key saved to ${CONFIG_FILE}`,
-                    `Balance payments are now active for this session.`,
-                    `Restart the MCP server to also load your favorited tools.`,
-                  ].join("\n"),
-                },
-              ],
-            };
-          }
-
-          if (poll.status === "expired") {
-            return {
-              content: [{ type: "text" as const, text: "Login expired. Run login again to retry." }],
-              isError: true,
-            };
-          }
-          // status === "pending" — keep polling
-        }
-
-        return {
-          content: [{ type: "text" as const, text: "Login timed out after 5 minutes. Run login again." }],
-          isError: true,
-        };
-      } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Login failed: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // ── Logout ──────────────────────────────────────────────────────────────────
-  server.registerTool(
-    "logout",
-    {
-      description:
-        "Disconnect your Caravo account and switch back to x402 wallet payments. " +
-        "Removes the saved API key and unregisters all favorited tools from this session.",
-      inputSchema: {},
-    },
-    async () => {
-      if (!API_KEY) {
-        return {
-          content: [{ type: "text" as const, text: "Not logged in — already using x402 wallet payments." }],
-        };
-      }
-
-      // 1. Clear in-memory key
-      API_KEY = undefined;
-
-      // 2. Remove key from config file
-      try {
-        const config = loadConfig();
-        delete config.api_key;
-        saveConfig(config);
-      } catch {
-        // config file may not exist — that's fine
-      }
-
-      // 3. Unregister all favorited tools
-      let removedCount = 0;
-      for (const [toolId, registered] of registeredFavTools) {
-        registered.remove();
-        registeredFavTools.delete(toolId);
-        removedCount++;
-      }
-
-      process.stderr.write(`[caravo] logout: cleared API key, removed ${removedCount} fav tools\n`);
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              `✓ Logged out of Caravo.`,
-              ``,
-              `API key removed from ${CONFIG_FILE}`,
-              ...(removedCount > 0 ? [`Unregistered ${removedCount} favorited tool(s).`] : []),
-              `Now using x402 wallet payments (${wallet.address}).`,
-            ].join("\n"),
-          },
-        ],
-      };
-    }
-  );
-
-  // ── List tags ────────────────────────────────────────────────────────────────
-  server.registerTool(
-    "list_tags",
-    {
-      description:
-        "List all available tags/categories in the marketplace. Returns tag names, slugs, and tool counts.",
-      inputSchema: {},
-    },
-    async () => {
-      const data = await apiGet("/api/tags");
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
-    }
-  );
-
-  // ── List providers ───────────────────────────────────────────────────────────
-  server.registerTool(
-    "list_providers",
-    {
-      description:
-        "List all providers/vendors in the marketplace. Returns provider names, slugs, and tool counts.",
-      inputSchema: {},
-    },
-    async () => {
-      const data = await apiGet("/api/providers");
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
-    }
-  );
+  // ── Core workflow tools (registered first for visibility) ──────────────────
 
   // ── Search tools ─────────────────────────────────────────────────────────────
   server.registerTool(
@@ -830,6 +600,239 @@ function registerAllTools(server: McpServer) {
         }
       }
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+  );
+
+
+  // ── Wallet info ──────────────────────────────────────────────────────────────
+  server.registerTool(
+    "get_wallet_info",
+    {
+      description:
+        "Get your local x402 wallet address and USDC balance. Send USDC on Base to this address to fund automatic payments.",
+      inputSchema: {},
+    },
+    async () => {
+      let balance = "unknown (check manually)";
+      try {
+        const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+        const data =
+          "0x70a08231000000000000000000000000" +
+          wallet.address.slice(2).toLowerCase();
+        const r = await fetch("https://mainnet.base.org", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "eth_call",
+            params: [{ to: USDC, data }, "latest"],
+          }),
+        });
+        const d = (await r.json()) as { result?: string };
+        if (d.result && d.result !== "0x") {
+          balance = (parseInt(d.result, 16) / 1e6).toFixed(6) + " USDC";
+        }
+      } catch {
+        // ignore
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              {
+                address: wallet.address,
+                network: "Base mainnet (eip155:8453)",
+                usdc_balance: balance,
+                note: "Send USDC on Base to this address to enable automatic x402 payments.",
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    }
+  );
+
+  // ── Login (browser-based account connect) ────────────────────────────────────
+  server.registerTool(
+    "login",
+    {
+      description:
+        "Connect your Caravo account to enable balance payments and favorites sync. " +
+        "Opens caravo.ai in your browser — sign in once and the API key is saved automatically. " +
+        "Run this if you started with x402 payments and now want to use your account balance.",
+      inputSchema: {},
+    },
+    async () => {
+      try {
+        // 1. Create one-time session
+        const initRes = await fetch(`${API_BASE}/api/auth/mcp-session`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const { token, url } = (await initRes.json()) as { token: string; url: string };
+
+        // 2. Open browser
+        const { exec } = await import("child_process");
+        const opener =
+          process.platform === "darwin"
+            ? `open "${url}"`
+            : process.platform === "win32"
+              ? `start "" "${url}"`
+              : `xdg-open "${url}"`;
+        exec(opener);
+
+        process.stderr.write(`[caravo] login: opened ${url}\n`);
+
+        // 3. Poll every 2s for up to 5 minutes
+        const deadline = Date.now() + 5 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const pollRes = await fetch(
+            `${API_BASE}/api/auth/mcp-session?token=${encodeURIComponent(token)}`
+          );
+          const poll = (await pollRes.json()) as {
+            status: string;
+            api_key?: string;
+          };
+
+          if (poll.status === "completed" && poll.api_key) {
+            // 4. Save to config + activate for this session
+            API_KEY = poll.api_key;
+            saveConfig({ api_key: poll.api_key });
+            process.stderr.write(`[caravo] login: API key saved to ${CONFIG_FILE}\n`);
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: [
+                    `✓ Logged in to Caravo!`,
+                    ``,
+                    `API key saved to ${CONFIG_FILE}`,
+                    `Balance payments are now active for this session.`,
+                    `Restart the MCP server to also load your favorited tools.`,
+                  ].join("\n"),
+                },
+              ],
+            };
+          }
+
+          if (poll.status === "expired") {
+            return {
+              content: [{ type: "text" as const, text: "Login expired. Run login again to retry." }],
+              isError: true,
+            };
+          }
+          // status === "pending" — keep polling
+        }
+
+        return {
+          content: [{ type: "text" as const, text: "Login timed out after 5 minutes. Run login again." }],
+          isError: true,
+        };
+      } catch (err) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Login failed: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // ── Logout ──────────────────────────────────────────────────────────────────
+  server.registerTool(
+    "logout",
+    {
+      description:
+        "Disconnect your Caravo account and switch back to x402 wallet payments. " +
+        "Removes the saved API key and unregisters all favorited tools from this session.",
+      inputSchema: {},
+    },
+    async () => {
+      if (!API_KEY) {
+        return {
+          content: [{ type: "text" as const, text: "Not logged in — already using x402 wallet payments." }],
+        };
+      }
+
+      // 1. Clear in-memory key
+      API_KEY = undefined;
+
+      // 2. Remove key from config file
+      try {
+        const config = loadConfig();
+        delete config.api_key;
+        saveConfig(config);
+      } catch {
+        // config file may not exist — that's fine
+      }
+
+      // 3. Unregister all favorited tools
+      let removedCount = 0;
+      for (const [toolId, registered] of registeredFavTools) {
+        registered.remove();
+        registeredFavTools.delete(toolId);
+        removedCount++;
+      }
+
+      process.stderr.write(`[caravo] logout: cleared API key, removed ${removedCount} fav tools\n`);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: [
+              `✓ Logged out of Caravo.`,
+              ``,
+              `API key removed from ${CONFIG_FILE}`,
+              ...(removedCount > 0 ? [`Unregistered ${removedCount} favorited tool(s).`] : []),
+              `Now using x402 wallet payments (${wallet.address}).`,
+            ].join("\n"),
+          },
+        ],
+      };
+    }
+  );
+
+  // ── List tags ────────────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_tags",
+    {
+      description:
+        "List all available tags/categories in the marketplace. Returns tag names, slugs, and tool counts.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = await apiGet("/api/tags");
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+      };
+    }
+  );
+
+  // ── List providers ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "list_providers",
+    {
+      description:
+        "List all providers/vendors in the marketplace. Returns provider names, slugs, and tool counts.",
+      inputSchema: {},
+    },
+    async () => {
+      const data = await apiGet("/api/providers");
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+      };
     }
   );
 
