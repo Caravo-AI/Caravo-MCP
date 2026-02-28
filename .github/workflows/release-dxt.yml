@@ -21,6 +21,18 @@ jobs:
       - name: Build MCP server
         run: npm ci && npm run build
 
+      - name: Sync manifest version from package.json
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          DESCRIPTION=$(node -p "require('./package.json').description")
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('dxt/manifest.json','utf8'));
+            m.version = '$VERSION';
+            m.description = process.argv[1];
+            fs.writeFileSync('dxt/manifest.json', JSON.stringify(m, null, 2) + '\n');
+          " "$DESCRIPTION"
+
       - name: Prepare DXT server directory
         run: |
           mkdir -p dxt/server
