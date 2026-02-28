@@ -1,0 +1,48 @@
+name: Build & Release DXT
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build MCP server
+        run: npm ci && npm run build
+
+      - name: Install DXT dependencies
+        run: cd dxt && npm install
+
+      - name: Pack DXT
+        run: cd dxt && npx @anthropic-ai/mcpb pack . caravo.dxt
+
+      - name: Get version
+        id: version
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dxt/caravo.dxt --clobber
+          else
+            gh release create "$VERSION" dxt/caravo.dxt \
+              --title "Caravo MCP $VERSION" \
+              --latest \
+              --notes "Claude Desktop .dxt extension bundling @caravo/mcp@${{ steps.version.outputs.version }}.
+
+**Install:** Download \`caravo.dxt\` and double-click to install in Claude Desktop."
+          fi

@@ -1,0 +1,22 @@
+{
+  "manifest_version": "0.3",
+  "name": "caravo",
+  "version": "1.0.1",
+  "description": "AI agent marketplace — discover and use APIs via MCP with automatic x402 USDC payments",
+  "author": {
+    "name": "Caravo",
+    "url": "https://caravo.ai"
+  },
+  "icon": "icon.png",
+  "homepage": "https://caravo.ai",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.js"],
+      "env": {}
+    }
+  },
+  "license": "MIT"
+}

@@ -1,3 +1,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
+dxt/caravo.dxt
+dxt/dxt.mcpb
+dxt/node_modules/

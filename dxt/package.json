@@ -1,0 +1,9 @@
+{
+  "name": "caravo-dxt",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DXT packaging for @caravo/mcp",
+  "dependencies": {
+    "@caravo/mcp": "file:.."
+  }
+}
