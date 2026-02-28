@@ -14,8 +14,7 @@ claude mcp add caravo -e CARAVO_API_KEY=am_xxx -- npx -y @caravo/mcp@latest
 
 ## How It Works
 
-- On first run, checks for an existing wallet from other x402 services and reuses it
-- If no wallet found, generates a new one at `~/.caravo/wallet.json`
+- On first run, generates a wallet at `~/.caravo/wallet.json`
 - If `CARAVO_API_KEY` is set, uses API key balance for payments and loads favorited tools as direct MCP tools
 - If no API key, uses x402 USDC payments automatically — just fund the wallet with USDC on Base
 
