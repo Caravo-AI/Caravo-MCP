@@ -1089,7 +1089,7 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "0.1.9",
+    version: "0.1.10",
     description:
       "The API marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
     icons: [
@@ -1112,7 +1112,7 @@ The catalog includes: AI Models (image/video/audio/vision/NLP/code/3D), Search (
 Example services (use get_tool_info to get their input schema and usage, or search_tools to find more):
 
 - google/nano-banana: Google Gemini-based ultra-fast image generation, great for prompt following and text rendering.
-- openresearch/paper-search: Search academic papers across all disciplines. Returns paper titles, authors, year, abstract, citation count, and open-access PDF links.
+- semanticscholar/paper-search: Search academic papers across all disciplines. Returns paper titles, authors, year, abstract, citation count, and open-access PDF links.
 - domainstatus/domain-availability: Check if a domain name is available to register.
 - semrush/website-traffic: Get comprehensive website traffic analytics for any domain, including authority score, backlinks, organic traffic, top geo distributions, and domain ranking.
 - semrush/keyword-insights: Get detailed keyword research data including search volume, CPC, competition level, and trend data.
