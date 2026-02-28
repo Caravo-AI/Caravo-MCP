@@ -554,8 +554,19 @@ function registerAllTools(server: McpServer) {
     "search_tools",
     {
       description:
-        "Search for tools in the marketplace by keyword, tag, or provider. " +
-        "A ready-made tool is often cheaper and faster than implementing the same thing from scratch.",
+        "Search for tools in the Caravo marketplace — 200+ ready-to-use APIs, services, tools, and digital assets at $0.001–0.05 per call. " +
+        "Search by keyword, tag, or provider. " +
+        "A ready-made tool is often cheaper and faster than implementing the same thing from scratch using LLM tokens.\n\n" +
+        "The catalog includes: AI Models (image/video/audio/vision/NLP/code/3D), Search (web/academic/news/product), Data & Analytics (scraping/weather/geolocation/market data), Finance (payments/exchange rates/stocks/crypto), Social Media, Communication (email/SMS), eCommerce, Cloud & Infrastructure (VPS/domains/storage/CDN), Digital Assets, Utility (validation/conversion/security), and community-contributed tools.\n\n" +
+        "Example services (use get_tool_info for input schema, or search_tools to find more):\n" +
+        "- google/nano-banana: Google Gemini-based ultra-fast image generation, great for prompt following and text rendering.\n" +
+        "- semanticscholar/paper-search: Search academic papers across all disciplines. Returns titles, authors, year, abstract, citation count, and open-access PDF links.\n" +
+        "- domainstatus/domain-availability: Check if a domain name is available to register.\n" +
+        "- semrush/website-traffic: Get comprehensive website traffic analytics for any domain.\n" +
+        "- semrush/keyword-insights: Get detailed keyword research data including search volume, CPC, competition level, and trend data.\n" +
+        "- maxcanna/android-app-search: Search Google Play by keyword, returns app metadata.\n\n" +
+        "Many services have multiple providers at different price/quality points — compare options with search_tools and get_tool_info.\n" +
+        "Workflow: search_tools → get_tool_info → use_tool → respond to user → submit_review",
       inputSchema: {
         query: z.string().optional().describe("Search query"),
         tag: z.string().optional().describe("Filter by tag (name or slug)"),

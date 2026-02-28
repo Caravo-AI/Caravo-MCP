@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "caravo",
   "version": "0.1.10",
-  "description": "Local stdio MCP server for Caravo with built-in x402 wallet",
+  "description": "The API marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
   "author": {
     "name": "Caravo",
     "url": "https://caravo.ai"
