@@ -259,11 +259,30 @@ function makeFavToolHandler(tool: MarketplaceTool) {
             {
               type: "text" as const,
               text: [
-                `Payment required for ${tool.name} ($${tool.pricing.price_per_call})`,
-                `Fund your wallet to use this tool:`,
-                `  Address: ${wallet.address}`,
-                `  Network: Base (eip155:8453)`,
-                `  Asset:   USDC`,
+                `Payment required for ${tool.name} ($${tool.pricing.price_per_call}). Two options:`,
+                ``,
+                `Option A — Caravo balance (recommended):`,
+                `  Run the "login" tool to connect your account, then top up at https://caravo.ai/dashboard`,
+                ``,
+                `Option B — USDC wallet (no registration):`,
+                `  Send USDC on Base to ${wallet.address}`,
+              ].join("\n"),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      if (result.error === "Insufficient balance") {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                `Insufficient Caravo balance (have $${result.balance ?? 0}, need $${result.cost ?? "?"}).`,
+                ``,
+                `Top up your balance at https://caravo.ai/dashboard`,
+                `Or enable auto top-up in your dashboard settings to never run out.`,
               ].join("\n"),
             },
           ],
@@ -461,16 +480,38 @@ function registerAllTools(server: McpServer) {
         }
 
         if (result.x402Version || result.accepts) {
+          const price = result.accepts?.[0]?.amount
+            ? `$${(parseInt(result.accepts[0].amount) / 1e6).toFixed(6)}`
+            : "?";
           return {
             content: [
               {
                 type: "text" as const,
                 text: [
-                  `Payment required. Fund your wallet to continue:`,
-                  `  Address: ${wallet.address}`,
-                  `  Network: Base (eip155:8453)`,
-                  `  Asset:   USDC`,
-                  `  Amount:  at least $${result.accepts?.[0]?.amount ? (parseInt(result.accepts[0].amount) / 1e6).toFixed(6) : "?"}`,
+                  `Payment required (${price}). Two options:`,
+                  ``,
+                  `Option A — Caravo balance (recommended):`,
+                  `  Run the "login" tool to connect your account, then top up at https://caravo.ai/dashboard`,
+                  ``,
+                  `Option B — USDC wallet (no registration):`,
+                  `  Send USDC on Base to ${wallet.address}`,
+                ].join("\n"),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (result.error === "Insufficient balance") {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: [
+                  `Insufficient Caravo balance (have $${result.balance ?? 0}, need $${result.cost ?? "?"}).`,
+                  ``,
+                  `Top up your balance at https://caravo.ai/dashboard`,
+                  `Or enable auto top-up in your dashboard settings to never run out.`,
                 ].join("\n"),
               },
             ],
