@@ -7,24 +7,6 @@ import { privateKeyToAccount } from "viem/accounts";
 const WALLET_DIR = join(homedir(), ".caravo");
 const WALLET_FILE = join(WALLET_DIR, "wallet.json");
 
-/**
- * Known wallet paths from other MCP servers and web3 services.
- * On startup we check these in order — if any exist, we reuse that wallet
- * instead of creating a new one. This avoids fragmenting USDC across
- * multiple addresses.
- *
- * Any JSON file with { privateKey: "0x...", address: "0x..." } is accepted;
- * extra fields (e.g. createdAt) are silently ignored.
- */
-const KNOWN_WALLET_PATHS = [
-  // Legacy wallet path (pre-rename)
-  join(homedir(), ".fal-marketplace-mcp", "wallet.json"),
-  // x402scan MCP (merit-systems/x402scan-mcp)
-  join(homedir(), ".x402scan-mcp", "wallet.json"),
-  // Coinbase Payments MCP (@coinbase/payments-mcp)
-  join(homedir(), ".payments-mcp", "wallet.json"),
-];
-
 export interface Wallet {
   privateKey: `0x${string}`;
   address: string;
@@ -57,21 +39,7 @@ export function loadOrCreateWallet(): Wallet {
   const own = tryLoadWallet(WALLET_FILE);
   if (own) return own;
 
-  // 2. Check wallets from other known MCPs
-  for (const path of KNOWN_WALLET_PATHS) {
-    const existing = tryLoadWallet(path);
-    if (existing) {
-      // Reuse the wallet and save a copy to our own path
-      mkdirSync(WALLET_DIR, { recursive: true });
-      writeFileSync(WALLET_FILE, JSON.stringify(existing, null, 2), { mode: 0o600 });
-      process.stderr.write(
-        `[caravo] reusing existing wallet from ${path}\n`
-      );
-      return existing;
-    }
-  }
-
-  // 3. No existing wallet found — generate new
+  // 2. No existing wallet found — generate new
   const privateKey = ("0x" + randomBytes(32).toString("hex")) as `0x${string}`;
   const account = privateKeyToAccount(privateKey);
   const wallet: Wallet = { privateKey, address: account.address };
