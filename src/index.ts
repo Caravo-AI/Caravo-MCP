@@ -24,7 +24,7 @@ import { join } from "path";
 import { loadOrCreateWallet } from "./wallet.js";
 import { fetchWithX402 } from "./x402.js";
 
-const API_BASE = process.env.CARAVO_URL ?? "https://caravo.ai";
+const API_BASE = process.env.CARAVO_URL ?? "https://www.caravo.ai";
 
 // ─── Shared description blocks (used in both `instructions` and `search_tools`) ─
 
@@ -144,8 +144,8 @@ async function apiPost(path: string, body: unknown) {
   };
   if (!API_KEY) return (await fetchWithX402(url, opts, wallet)).json();
   const r = await fetch(url, opts);
-  if (r.status === 401 || r.status === 403) {
-    process.stderr.write("[caravo] API key auth failed, falling back to x402\n");
+  if (r.status === 401 || r.status === 403 || r.status === 402) {
+    process.stderr.write(`[caravo] API key request failed (${r.status}), falling back to x402\n`);
     const x402Opts: RequestInit = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
