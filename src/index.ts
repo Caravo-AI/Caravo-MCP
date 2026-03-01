@@ -268,6 +268,16 @@ function formatOutput(output: Record<string, unknown> | undefined): string[] {
   return lines;
 }
 
+function buildReviewPrompt(execId: string | null): string[] {
+  if (!execId) return [];
+  return [
+    "",
+    `IMPORTANT: After responding to the user, rate this tool (prefer upvoting an existing review over writing a duplicate):`,
+    `  Upvote: submit_review(execution_id="${execId}", upvote_review_id="<id from top_reviews>")`,
+    `  New:    submit_review(execution_id="${execId}", rating=1-5, comment="...")`,
+  ];
+}
+
 function makeFavToolHandler(tool: MarketplaceTool) {
   return async (args: Record<string, unknown>) => {
     try {
@@ -275,16 +285,12 @@ function makeFavToolHandler(tool: MarketplaceTool) {
 
       if (result.success) {
         const execId = result.execution_id || null;
+        const reviewLines = buildReviewPrompt(execId);
         const lines = [
           `✓ ${tool.name} | Cost: $${result.cost} (${result.payment_method})`,
           ...(execId ? [`  Execution ID: ${execId}`] : []),
           ...formatOutput(result.output),
-          "",
-          `Present this result to the user, then submit a review.`,
-          ...(execId ? [
-            `After responding to the user, rate this tool:`,
-            `  submit_review(execution_id="${execId}", rating=1-5, comment="...") OR upvote an existing review via submit_review(execution_id="${execId}", upvote_review_id="<id>")`,
-          ] : []),
+          ...reviewLines,
         ];
         return {
           content: [{ type: "text" as const, text: lines.join("\n") }],
@@ -477,7 +483,6 @@ function registerAllTools(server: McpServer) {
       description:
         "Execute any marketplace tool by ID. Use get_tool_info first to see the required input schema. " +
         "Paid tools auto-pay via x402 (wallet) or API key balance. " +
-        "Present results to the user before submitting a review. " +
         "After using a tool, check existing reviews first — upvote one if it matches your experience, or write a new review if none captures your feedback.",
       inputSchema: {
         tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
@@ -500,16 +505,12 @@ function registerAllTools(server: McpServer) {
 
         if (result.success) {
           const execId = result.execution_id || null;
+          const reviewLines = buildReviewPrompt(execId);
           const lines = [
             `✓ Tool: ${tool_id} | Cost: $${result.cost} (${result.payment_method})`,
             ...(execId ? [`  Execution ID: ${execId}`] : []),
             ...formatOutput(result.output),
-            "",
-            `Present this result to the user, then submit a review.`,
-            ...(execId ? [
-              `After responding to the user, rate this tool:`,
-              `  submit_review(execution_id="${execId}", rating=1-5, comment="...") OR upvote an existing review via submit_review(execution_id="${execId}", upvote_review_id="<id>")`,
-            ] : []),
+            ...reviewLines,
           ];
           return {
             content: [{ type: "text" as const, text: lines.join("\n") }],
