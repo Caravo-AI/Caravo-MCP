@@ -268,6 +268,33 @@ function formatOutput(output: Record<string, unknown> | undefined): string[] {
   return lines;
 }
 
+function buildPaymentRequiredMessage(price: string): string {
+  const VALUE_PROP = "Top up once to unlock 200+ tools at $0.001–$0.05/call — generate images & videos, analyze website traffic, research academic papers, pull social media analytics, get real-time financial data, and much more.";
+  if (API_KEY) {
+    // Logged in but both balance and wallet are empty
+    return [
+      `Payment required (${price}). Your Caravo balance is insufficient and your wallet has no USDC.`,
+      ``,
+      `Top up your Caravo balance at https://www.caravo.ai/dashboard`,
+      `Or send USDC on Base to ${wallet.address}`,
+      ``,
+      VALUE_PROP,
+    ].join("\n");
+  }
+  // Not logged in
+  return [
+    `Payment required (${price}). Two options:`,
+    ``,
+    `Option A — Caravo balance (recommended):`,
+    `  Run the "login" tool to connect your account, then top up at https://www.caravo.ai/dashboard`,
+    ``,
+    `Option B — USDC wallet (no registration):`,
+    `  Send USDC on Base to ${wallet.address}`,
+    ``,
+    VALUE_PROP,
+  ].join("\n");
+}
+
 function buildReviewPrompt(execId: string | null): string[] {
   if (!execId) return [];
   return [
@@ -298,38 +325,9 @@ function makeFavToolHandler(tool: MarketplaceTool) {
       }
 
       if (result.x402Version || result.accepts) {
+        const price = `$${tool.pricing.price_per_call}`;
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `Payment required for ${tool.name} ($${tool.pricing.price_per_call}). Two options:`,
-                ``,
-                `Option A — Caravo balance (recommended):`,
-                `  Run the "login" tool to connect your account, then top up at https://caravo.ai/dashboard`,
-                ``,
-                `Option B — USDC wallet (no registration):`,
-                `  Send USDC on Base to ${wallet.address}`,
-              ].join("\n"),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      if (result.error === "Insufficient balance") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `Insufficient Caravo balance (have $${result.balance ?? 0}, need $${result.cost ?? "?"}).`,
-                ``,
-                `Top up your balance at https://caravo.ai/dashboard`,
-                `Or enable auto top-up in your dashboard settings to never run out.`,
-              ].join("\n"),
-            },
-          ],
+          content: [{ type: "text" as const, text: buildPaymentRequiredMessage(price) }],
           isError: true,
         };
       }
@@ -523,37 +521,7 @@ function registerAllTools(server: McpServer) {
             ? `$${(parseInt(result.accepts[0].amount) / 1e6).toFixed(6)}`
             : "?";
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: [
-                  `Payment required (${price}). Two options:`,
-                  ``,
-                  `Option A — Caravo balance (recommended):`,
-                  `  Run the "login" tool to connect your account, then top up at https://caravo.ai/dashboard`,
-                  ``,
-                  `Option B — USDC wallet (no registration):`,
-                  `  Send USDC on Base to ${wallet.address}`,
-                ].join("\n"),
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        if (result.error === "Insufficient balance") {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: [
-                  `Insufficient Caravo balance (have $${result.balance ?? 0}, need $${result.cost ?? "?"}).`,
-                  ``,
-                  `Top up your balance at https://caravo.ai/dashboard`,
-                  `Or enable auto top-up in your dashboard settings to never run out.`,
-                ].join("\n"),
-              },
-            ],
+            content: [{ type: "text" as const, text: buildPaymentRequiredMessage(price) }],
             isError: true,
           };
         }
