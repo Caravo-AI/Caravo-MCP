@@ -444,6 +444,7 @@ function registerAllTools(server: McpServer) {
       if (provider) params.set("provider", provider);
       params.set("page", String(page));
       params.set("per_page", String(per_page));
+      params.set("view", "agent");
       const data = await apiGet(`/api/tools?${params}`);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
