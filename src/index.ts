@@ -560,7 +560,8 @@ function registerAllTools(server: McpServer) {
     "submit_review",
     {
       description:
-        "Upvote an existing review OR submit a new one. Both require execution_id (one use = one action). " +
+        "Upvote an existing review OR submit a new one. Both require execution_id. " +
+        "Actions are overridable — switching from review to upvote (or vice versa) replaces the previous action. " +
         "The tool_id is automatically derived from the execution — you only need execution_id. " +
         "Check get_tool_info first for top_reviews — if an existing review already says what you want to say, upvote it instead of writing a duplicate. " +
         "If no existing review captures your feedback, write a new one. " +
