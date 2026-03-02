@@ -316,8 +316,14 @@ function buildPostExecPrompt(execId: string | null, toolId: string): string[] {
 
 function makeFavToolHandler(tool: MarketplaceTool) {
   return async (args: Record<string, unknown>) => {
+    // Extract dry_run before passing remaining args to the API
+    const { dry_run, ...toolInput } = args;
+    if (dry_run) {
+      return dryRunProbe(tool.id, toolInput);
+    }
+
     try {
-      const result = await apiPost(`/api/tools/${tool.id}/execute`, args);
+      const result = await apiPost(`/api/tools/${tool.id}/execute`, toolInput);
 
       if (result.success) {
         const execId = result.execution_id || null;
@@ -369,12 +375,15 @@ function registerFavTool(server: McpServer, tool: MarketplaceTool) {
       ? `$${tool.pricing.price_per_call}/call`
       : "Free";
 
+  const schema = buildSchemaShape(tool);
+  schema.dry_run = z.boolean().optional().describe("Preview cost without executing");
+
   const registered = server.registerTool(
     `fav:${tool.id}`,
     {
       title: `★ ${tool.name}`,
       description: `[${tool.provider}] ${tool.description} | ${priceLabel} | Tags: ${tool.tags.join(", ")}`,
-      inputSchema: buildSchemaShape(tool),
+      inputSchema: schema,
     },
     makeFavToolHandler(tool)
   );
@@ -410,6 +419,64 @@ async function loadFavoriteTools(server: McpServer) {
   }
 }
 
+// ─── Dry-run helper ─────────────────────────────────────────────────────────
+
+async function dryRunProbe(toolId: string, input: Record<string, unknown>) {
+  try {
+    // Send a plain POST with no auth/payment headers to trigger a 402 for paid tools
+    const url = `${API_BASE}/api/tools/${toolId}/execute`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+
+    if (resp.status === 402) {
+      // Parse cost from 402 response
+      let cost = "unknown";
+      try {
+        const body = await resp.json();
+        const amount = body?.accepts?.[0]?.maxAmountRequired ?? body?.accepts?.[0]?.amount;
+        if (amount) {
+          cost = `$${(parseInt(amount) / 1e6).toFixed(6)}`;
+        }
+      } catch {
+        // Header fallback
+        const header = resp.headers.get("payment-required");
+        if (header) {
+          try {
+            const pr = JSON.parse(atob(header));
+            const amount = pr?.accepts?.[0]?.maxAmountRequired ?? pr?.accepts?.[0]?.amount;
+            if (amount) cost = `$${(parseInt(amount) / 1e6).toFixed(6)}`;
+          } catch { /* ignore */ }
+        }
+      }
+      return {
+        content: [{ type: "text" as const, text: `Preview: ${toolId} costs ${cost} per call (no payment was made)` }],
+      };
+    }
+
+    if (resp.ok) {
+      return {
+        content: [{ type: "text" as const, text: `Preview: ${toolId} is free ($0.00 per call)` }],
+      };
+    }
+
+    // Other error (e.g. 400 bad input)
+    const body = await resp.json().catch(() => ({}));
+    const errorMsg = (body as Record<string, unknown>)?.error ?? `HTTP ${resp.status}`;
+    return {
+      content: [{ type: "text" as const, text: `Dry-run failed: ${errorMsg}` }],
+      isError: true,
+    };
+  } catch (err) {
+    return {
+      content: [{ type: "text" as const, text: `Dry-run error: ${err instanceof Error ? err.message : String(err)}` }],
+      isError: true,
+    };
+  }
+}
+
 // ─── Static management + meta tools ───────────────────────────────────────────
 
 function registerAllTools(server: McpServer) {
@@ -431,11 +498,12 @@ function registerAllTools(server: McpServer) {
         query: z.string().optional().describe("Search query"),
         tag: z.string().optional().describe("Filter by tag (name or slug)"),
         provider: z.string().optional().describe("Filter by provider slug"),
+        pricing_type: z.enum(["free", "paid"]).optional().describe("Filter by pricing: 'free' or 'paid'"),
         page: z.number().optional().describe("Page number (default 1)"),
         per_page: z.number().optional().describe("Results per page (default 10)"),
       },
     },
-    async ({ query, tag, provider, page = 1, per_page = 10 }) => {
+    async ({ query, tag, provider, pricing_type, page = 1, per_page = 10 }) => {
       if (!Number.isInteger(page) || page < 1) {
         return { content: [{ type: "text" as const, text: "Error: page must be a positive integer" }], isError: true };
       }
@@ -449,6 +517,7 @@ function registerAllTools(server: McpServer) {
       if (query) params.set("query", query);
       if (tag) params.set("tag", tag);
       if (provider) params.set("provider", provider);
+      if (pricing_type) params.set("pricing_type", pricing_type);
       params.set("page", String(page));
       params.set("per_page", String(per_page));
       params.set("view", "agent");
@@ -497,9 +566,10 @@ function registerAllTools(server: McpServer) {
         input: z
           .record(z.string(), z.unknown())
           .describe("Input parameters for the tool (see get_tool_info for schema)"),
+        dry_run: z.boolean().optional().describe("Preview execution cost without actually running the tool or making a payment"),
       },
     },
-    async ({ tool_id, input }) => {
+    async ({ tool_id, input, dry_run }) => {
       const validationError = validateToolId(tool_id);
       if (validationError) {
         return {
@@ -508,6 +578,12 @@ function registerAllTools(server: McpServer) {
         };
       }
       const cleanInput = stripDangerousFields(input);
+
+      // Dry-run mode: probe cost without executing or paying
+      if (dry_run) {
+        return dryRunProbe(tool_id.trim(), cleanInput);
+      }
+
       try {
         const result = await apiPost(`/api/tools/${tool_id.trim()}/execute`, cleanInput);
 
