@@ -23,8 +23,24 @@ import { homedir } from "os";
 import { join } from "path";
 import { loadOrCreateWallet } from "./wallet.js";
 import { fetchWithX402 } from "./x402.js";
+import { checkForUpdate, type UpdateInfo } from "./version-check.js";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { version: VERSION } = require("../package.json") as { version: string };
 
 const API_BASE = process.env.CARAVO_URL ?? "https://www.caravo.ai";
+
+// Auto-update: check for newer version on startup (async, non-blocking)
+let pendingUpdate: UpdateInfo | null = null;
+checkForUpdate("@caravo/mcp", VERSION).then((info) => {
+  if (info) {
+    pendingUpdate = info;
+    process.stderr.write(
+      `[caravo] update available: ${info.current} → ${info.latest} (will auto-update on next restart)\n`
+    );
+  }
+});
 
 // ─── Shared description blocks (used in both `instructions` and `search_tools`) ─
 
@@ -567,8 +583,12 @@ function registerAllTools(server: McpServer) {
       params.set("per_page", String(per_page));
       params.set("view", "agent");
       const data = await apiGet(`/api/tools?${params}`);
+      let text = JSON.stringify(data, null, 2);
+      if (pendingUpdate) {
+        text += `\n\n[Update available: @caravo/mcp ${pendingUpdate.current} → ${pendingUpdate.latest}. Will auto-update on next MCP restart.]`;
+      }
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+        content: [{ type: "text" as const, text }],
       };
     }
   );
@@ -1303,7 +1323,7 @@ function registerAllTools(server: McpServer) {
 const server = new McpServer(
   {
     name: "caravo",
-    version: "0.1.15",
+    version: VERSION,
     description:
       "The API marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
     icons: [
