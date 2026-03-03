@@ -1,6 +1,6 @@
 {
   "name": "@caravo/mcp",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "The API marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
   "type": "module",
   "bin": {

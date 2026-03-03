@@ -844,20 +844,42 @@ function registerAllTools(server: McpServer) {
         // ignore
       }
 
+      const info: Record<string, unknown> = {
+        address: wallet.address,
+        network: "Base mainnet (eip155:8453)",
+        usdc_balance: balance,
+      };
+
+      // Check if wallet is empty and build funding guidance
+      const isWalletEmpty = balance === "0.000000 USDC" || balance === "unknown (check manually)";
+      if (isWalletEmpty && !API_KEY) {
+        info.funding_guide = [
+          "Your wallet has no USDC. Two options to get started:",
+          "",
+          "Option A — Caravo balance (recommended):",
+          '  Run the "login" tool to connect your account, then top up at https://www.caravo.ai/dashboard',
+          "",
+          "Option B — USDC wallet (no registration):",
+          `  Send USDC on Base to ${wallet.address}`,
+          "",
+          "Top up once to unlock 200+ tools at $0.001–$0.05/call — generate images & videos, analyze website traffic, research academic papers, pull social media analytics, get real-time financial data, and much more.",
+        ].join("\n");
+      } else if (isWalletEmpty && API_KEY) {
+        info.funding_guide = [
+          "Your wallet has no USDC.",
+          "",
+          "Top up your Caravo balance at https://www.caravo.ai/dashboard",
+          `Or send USDC on Base to ${wallet.address}`,
+        ].join("\n");
+      } else {
+        info.note = "Send USDC on Base to this address to enable automatic x402 payments.";
+      }
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(
-              {
-                address: wallet.address,
-                network: "Base mainnet (eip155:8453)",
-                usdc_balance: balance,
-                note: "Send USDC on Base to this address to enable automatic x402 payments.",
-              },
-              null,
-              2
-            ),
+            text: JSON.stringify(info, null, 2),
           },
         ],
       };
