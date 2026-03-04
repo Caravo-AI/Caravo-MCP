@@ -193,13 +193,7 @@ function baseHeaders(): Record<string, string> {
 
 async function apiGet(path: string) {
   const r = await fetch(`${API_BASE}${path}`, { headers: baseHeaders() });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`API request failed (${r.status}): ${text.slice(0, 200)}`);
-  }
-  return r.json().catch(() => {
-    throw new Error(`API returned non-JSON response (${r.status})`);
-  });
+  return safeParseJson(r);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -240,13 +234,7 @@ async function apiDelete(path: string, body: unknown) {
     headers: baseHeaders(),
     body: JSON.stringify(body),
   });
-  if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(`API request failed (${r.status}): ${text.slice(0, 200)}`);
-  }
-  return r.json().catch(() => {
-    throw new Error(`API returned non-JSON response (${r.status})`);
-  });
+  return safeParseJson(r);
 }
 
 const MAX_JSON_OUTPUT_CHARS = 20_000;
