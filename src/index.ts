@@ -193,7 +193,17 @@ function baseHeaders(): Record<string, string> {
 
 async function apiGet(path: string) {
   const r = await fetch(`${API_BASE}${path}`, { headers: baseHeaders() });
-  return r.json();
+  return safeParseJson(r);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function safeParseJson(r: Response): Promise<any> {
+  try {
+    return await r.json();
+  } catch {
+    const text = await r.text().catch(() => "");
+    return { error: `Non-JSON response (${r.status}): ${text.slice(0, 200)}` };
+  }
 }
 
 async function apiPost(path: string, body: unknown) {
@@ -203,7 +213,7 @@ async function apiPost(path: string, body: unknown) {
     headers: baseHeaders(),
     body: JSON.stringify(body),
   };
-  if (!API_KEY) return (await fetchWithX402(url, opts, wallet)).json();
+  if (!API_KEY) return safeParseJson(await fetchWithX402(url, opts, wallet));
   const r = await fetch(url, opts);
   if (r.status === 401 || r.status === 403 || r.status === 402) {
     process.stderr.write(`[caravo] API key request failed (${r.status}), falling back to x402\n`);
@@ -212,9 +222,9 @@ async function apiPost(path: string, body: unknown) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     };
-    return (await fetchWithX402(url, x402Opts, wallet)).json();
+    return safeParseJson(await fetchWithX402(url, x402Opts, wallet));
   }
-  return r.json();
+  return safeParseJson(r);
 }
 
 async function apiDelete(path: string, body: unknown) {
@@ -224,7 +234,17 @@ async function apiDelete(path: string, body: unknown) {
     headers: baseHeaders(),
     body: JSON.stringify(body),
   });
-  return r.json();
+  return safeParseJson(r);
+}
+
+const MAX_JSON_OUTPUT_CHARS = 20_000;
+
+function safeJsonText(data: unknown, indent = true): string {
+  const json = indent ? JSON.stringify(data, null, 2) : JSON.stringify(data);
+  if (json.length > MAX_JSON_OUTPUT_CHARS) {
+    return json.slice(0, MAX_JSON_OUTPUT_CHARS) + `\n... (truncated, ${json.length} chars total)`;
+  }
+  return json;
 }
 
 // ─── Input validation helpers ─────────────────────────────────────────────────
@@ -321,9 +341,7 @@ function formatOutput(output: Record<string, unknown> | undefined): string[] {
 
   // JSON
   if (output.json !== undefined) {
-    const jsonStr = JSON.stringify(output.json, null, 2);
-    // Truncate large JSON to avoid context overload
-    lines.push(jsonStr.length > 4000 ? jsonStr.slice(0, 4000) + "\n... (truncated)" : jsonStr);
+    lines.push(safeJsonText(output.json));
   }
 
   return lines;
@@ -410,7 +428,7 @@ function makeFavToolHandler(tool: MarketplaceTool) {
 
       return {
         content: [
-          { type: "text" as const, text: `Error: ${JSON.stringify(result)}` },
+          { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
         ],
         isError: true,
       };
@@ -574,22 +592,29 @@ function registerAllTools(server: McpServer) {
       if (per_page > 100) {
         return { content: [{ type: "text" as const, text: "Error: per_page must be at most 100" }], isError: true };
       }
-      const params = new URLSearchParams();
-      if (query) params.set("query", query);
-      if (tag) params.set("tag", tag);
-      if (provider) params.set("provider", provider);
-      if (pricing_type) params.set("pricing_type", pricing_type);
-      params.set("page", String(page));
-      params.set("per_page", String(per_page));
-      params.set("view", "agent");
-      const data = await apiGet(`/api/tools?${params}`);
-      let text = JSON.stringify(data, null, 2);
-      if (pendingUpdate) {
-        text += `\n\n[Update available: @caravo/mcp ${pendingUpdate.current} → ${pendingUpdate.latest}. Will auto-update on next MCP restart.]`;
+      try {
+        const params = new URLSearchParams();
+        if (query) params.set("query", query);
+        if (tag) params.set("tag", tag);
+        if (provider) params.set("provider", provider);
+        if (pricing_type) params.set("pricing_type", pricing_type);
+        params.set("page", String(page));
+        params.set("per_page", String(per_page));
+        params.set("view", "agent");
+        const data = await apiGet(`/api/tools?${params}`);
+        let text = safeJsonText(data);
+        if (pendingUpdate) {
+          text += `\n\n[Update available: @caravo/mcp ${pendingUpdate.current} → ${pendingUpdate.latest}. Will auto-update on next MCP restart.]`;
+        }
+        return {
+          content: [{ type: "text" as const, text }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
       }
-      return {
-        content: [{ type: "text" as const, text }],
-      };
     }
   );
 
@@ -611,10 +636,17 @@ function registerAllTools(server: McpServer) {
           isError: true,
         };
       }
-      const data = await apiGet(`/api/tools/${tool_id.trim()}`);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
+      try {
+        const data = await apiGet(`/api/tools/${tool_id.trim()}`);
+        return {
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -678,7 +710,7 @@ function registerAllTools(server: McpServer) {
 
         return {
           content: [
-            { type: "text" as const, text: `Error: ${JSON.stringify(result)}` },
+            { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
           ],
           isError: true,
         };
@@ -726,87 +758,94 @@ function registerAllTools(server: McpServer) {
         };
       }
 
-      // Upvote mode
-      if (upvote_review_id) {
-        if (!execution_id) {
+      try {
+        // Upvote mode
+        if (upvote_review_id) {
+          if (!execution_id) {
+            return {
+              content: [{ type: "text" as const, text: "Error: execution_id is required for upvoting. Each upvote consumes one tool execution." }],
+              isError: true,
+            };
+          }
+          const result = await apiPost(`/api/reviews/upvote`, {
+            review_id: upvote_review_id,
+            execution_id,
+          });
+
+          if (result.success) {
+            const action = result.action === "already_upvoted" ? "Already upvoted" : "Upvoted";
+            const upvotedToolId = result.tool_id || "";
+            const lines = [`✓ ${action} review ${upvote_review_id}`];
+            // Suggest favorite only when upvoting a 5-star review
+            if (result.rating === 5 && upvotedToolId) {
+              if (API_KEY && !registeredFavTools.has(upvotedToolId)) {
+                lines.push(`This was a 5/5 review — consider favorite_tool(tool_id="${upvotedToolId}") if you plan to reuse it.`);
+              } else if (!API_KEY) {
+                lines.push(`This was a 5/5 review — consider saving tool_id="${upvotedToolId}" to your memory for future reuse.`);
+              }
+            }
+            return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+          }
+
           return {
-            content: [{ type: "text" as const, text: "Error: execution_id is required for upvoting. Each upvote consumes one tool execution." }],
+            content: [{ type: "text" as const, text: result.error ? `Error: ${result.error}` : safeJsonText(result) }],
             isError: true,
           };
         }
-        const result = await apiPost(`/api/reviews/upvote`, {
-          review_id: upvote_review_id,
+
+        // New review mode
+        if (rating == null || !comment) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: "Error: rating and comment are required for new reviews. To upvote an existing review, use upvote_review_id instead.",
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        if (rating < 1 || rating > 5) {
+          return {
+            content: [{ type: "text" as const, text: "Error: rating must be between 1 and 5" }],
+            isError: true,
+          };
+        }
+
+        const result = await apiPost(`/api/reviews`, {
           execution_id,
+          rating,
+          comment,
+          agent_id,
         });
 
-        if (result.success) {
-          const action = result.action === "already_upvoted" ? "Already upvoted" : "Upvoted";
-          const upvotedToolId = result.tool_id || "";
-          const lines = [`✓ ${action} review ${upvote_review_id}`];
-          // Suggest favorite only when upvoting a 5-star review
-          if (result.rating === 5 && upvotedToolId) {
-            if (API_KEY && !registeredFavTools.has(upvotedToolId)) {
-              lines.push(`This was a 5/5 review — consider favorite_tool(tool_id="${upvotedToolId}") if you plan to reuse it.`);
-            } else if (!API_KEY) {
-              lines.push(`This was a 5/5 review — consider saving tool_id="${upvotedToolId}" to your memory for future reuse.`);
-            }
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
+        // The API returns the review record with tool_id derived from execution
+        const reviewToolId = result.tool_id || "unknown";
+        const lines = [
+          `✓ Review submitted for ${reviewToolId} (${rating}/5)`,
+        ];
+        if (rating === 5) {
+          if (API_KEY && !registeredFavTools.has(reviewToolId)) {
+            lines.push(`This tool scored 5/5 — consider favorite_tool(tool_id="${reviewToolId}") if you plan to reuse it.`);
+          } else if (!API_KEY) {
+            lines.push(`This tool scored 5/5 — consider saving tool_id="${reviewToolId}" to your memory for future reuse.`);
           }
-          return { content: [{ type: "text" as const, text: lines.join("\n") }] };
         }
-
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      } catch (err) {
         return {
-          content: [{ type: "text" as const, text: result.error ? `Error: ${result.error}` : JSON.stringify(result, null, 2) }],
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
-
-      // New review mode
-      if (rating == null || !comment) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Error: rating and comment are required for new reviews. To upvote an existing review, use upvote_review_id instead.",
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      if (rating < 1 || rating > 5) {
-        return {
-          content: [{ type: "text" as const, text: "Error: rating must be between 1 and 5" }],
-          isError: true,
-        };
-      }
-
-      const result = await apiPost(`/api/reviews`, {
-        execution_id,
-        rating,
-        comment,
-        agent_id,
-      });
-
-      if (result.error) {
-        return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
-          isError: true,
-        };
-      }
-
-      // The API returns the review record with tool_id derived from execution
-      const reviewToolId = result.tool_id || "unknown";
-      const lines = [
-        `✓ Review submitted for ${reviewToolId} (${rating}/5)`,
-      ];
-      if (rating === 5) {
-        if (API_KEY && !registeredFavTools.has(reviewToolId)) {
-          lines.push(`This tool scored 5/5 — consider favorite_tool(tool_id="${reviewToolId}") if you plan to reuse it.`);
-        } else if (!API_KEY) {
-          lines.push(`This tool scored 5/5 — consider saving tool_id="${reviewToolId}" to your memory for future reuse.`);
-        }
-      }
-      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     }
   );
 
@@ -1042,10 +1081,17 @@ function registerAllTools(server: McpServer) {
       inputSchema: {},
     },
     async () => {
-      const data = await apiGet("/api/tags");
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
+      try {
+        const data = await apiGet("/api/tags");
+        return {
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -1058,10 +1104,17 @@ function registerAllTools(server: McpServer) {
       inputSchema: {},
     },
     async () => {
-      const data = await apiGet("/api/providers");
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
+      try {
+        const data = await apiGet("/api/providers");
+        return {
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -1088,14 +1141,21 @@ function registerAllTools(server: McpServer) {
       if (per_page > 100) {
         return { content: [{ type: "text" as const, text: "Error: per_page must be at most 100" }], isError: true };
       }
-      const params = new URLSearchParams();
-      params.set("status", status);
-      params.set("page", String(page));
-      params.set("per_page", String(per_page));
-      const data = await apiGet(`/api/tool-requests?${params}`);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
-      };
+      try {
+        const params = new URLSearchParams();
+        params.set("status", status);
+        params.set("page", String(page));
+        params.set("per_page", String(per_page));
+        const data = await apiGet(`/api/tool-requests?${params}`);
+        return {
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -1115,35 +1175,42 @@ function registerAllTools(server: McpServer) {
       },
     },
     async ({ title, description, use_case, execution_id, agent_id }) => {
-      const result = await apiPost("/api/tool-requests", {
-        title,
-        description,
-        use_case,
-        execution_id,
-        agent_id,
-      });
+      try {
+        const result = await apiPost("/api/tool-requests", {
+          title,
+          description,
+          use_case,
+          execution_id,
+          agent_id,
+        });
 
-      if (result.error) {
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
         return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                `✓ Tool request submitted: "${result.title}"`,
+                `  Request ID: ${result.id}`,
+                `  Status: ${result.status}`,
+                ``,
+                `Other agents can upvote this request to signal demand.`,
+              ].join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              `✓ Tool request submitted: "${result.title}"`,
-              `  Request ID: ${result.id}`,
-              `  Status: ${result.status}`,
-              ``,
-              `Other agents can upvote this request to signal demand.`,
-            ].join("\n"),
-          },
-        ],
-      };
     }
   );
 
@@ -1159,21 +1226,28 @@ function registerAllTools(server: McpServer) {
       },
     },
     async ({ request_id, execution_id }) => {
-      const result = await apiPost(`/api/tool-requests/${request_id}`, {
-        execution_id,
-      });
+      try {
+        const result = await apiPost(`/api/tool-requests/${request_id}`, {
+          execution_id,
+        });
 
-      if (result.error) {
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
+        const action = result.action === "already_upvoted" ? "Already upvoted" : "Upvoted";
         return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+          content: [{ type: "text" as const, text: `✓ ${action} tool request ${request_id}` }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
-
-      const action = result.action === "already_upvoted" ? "Already upvoted" : "Upvoted";
-      return {
-        content: [{ type: "text" as const, text: `✓ ${action} tool request ${request_id}` }],
-      };
     }
   );
 
@@ -1198,20 +1272,20 @@ function registerAllTools(server: McpServer) {
           isError: true,
         };
       }
-      const result = await apiGet("/api/favorites");
-      if (result.error) {
+      try {
+        const result = await apiGet("/api/favorites");
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+        const tools: MarketplaceTool[] = result.data ?? [];
         return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
-          isError: true,
-        };
-      }
-      const tools: MarketplaceTool[] = result.data ?? [];
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
+          content: [
+            {
+              type: "text" as const,
+              text: safeJsonText({
                 total: tools.length,
                 favorites: tools.map((t) => ({
                   tool_id: t.id,
@@ -1220,13 +1294,16 @@ function registerAllTools(server: McpServer) {
                   price_per_call: t.pricing.price_per_call,
                 })),
                 hint: "Favorited tools are registered as direct MCP tools named fav:<tool_id>.",
-              },
-              null,
-              2
-            ),
-          },
-        ],
-      };
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -1256,34 +1333,41 @@ function registerAllTools(server: McpServer) {
         };
       }
 
-      const result = await apiPost("/api/favorites", { tool_id });
+      try {
+        const result = await apiPost("/api/favorites", { tool_id });
 
-      if (result.error) {
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
+        // Dynamically register the new fav tool in this session
+        const tool = result.tool as MarketplaceTool | undefined;
+        if (tool) {
+          registerFavTool(server, tool);
+        }
+
         return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: [
+                `★ Added "${tool?.name ?? tool_id}" to favorites!`,
+                ``,
+                `It is now registered as a direct MCP tool: fav:${tool_id}`,
+                `Call it directly with its input parameters — no need for use_tool.`,
+              ].join("\n"),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
-
-      // Dynamically register the new fav tool in this session
-      const tool = result.tool as MarketplaceTool | undefined;
-      if (tool) {
-        registerFavTool(server, tool);
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: [
-              `★ Added "${tool?.name ?? tool_id}" to favorites!`,
-              ``,
-              `It is now registered as a direct MCP tool: fav:${tool_id}`,
-              `Call it directly with its input parameters — no need for use_tool.`,
-            ].join("\n"),
-          },
-        ],
-      };
     }
   );
 
@@ -1310,32 +1394,39 @@ function registerAllTools(server: McpServer) {
         };
       }
 
-      const result = await apiDelete("/api/favorites", { tool_id });
+      try {
+        const result = await apiDelete("/api/favorites", { tool_id });
 
-      if (result.error) {
+        if (result.error) {
+          return {
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          };
+        }
+
+        // Dynamically unregister the fav tool from this session
+        const registered = registeredFavTools.get(tool_id);
+        if (registered) {
+          registered.remove();
+          registeredFavTools.delete(tool_id);
+        }
+
         return {
-          content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+          content: [
+            {
+              type: "text" as const,
+              text: result.removed
+                ? `Removed "fav:${tool_id}" from favorites and unregistered it.`
+                : `"${tool_id}" was not in your favorites.`,
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
         };
       }
-
-      // Dynamically unregister the fav tool from this session
-      const registered = registeredFavTools.get(tool_id);
-      if (registered) {
-        registered.remove();
-        registeredFavTools.delete(tool_id);
-      }
-
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: result.removed
-              ? `Removed "fav:${tool_id}" from favorites and unregistered it.`
-              : `"${tool_id}" was not in your favorites.`,
-          },
-        ],
-      };
     }
   );
 }
