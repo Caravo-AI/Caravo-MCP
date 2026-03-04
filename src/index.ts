@@ -219,7 +219,7 @@ async function apiPost(path: string, body: unknown) {
     process.stderr.write(`[caravo] API key request failed (${r.status}), falling back to x402\n`);
     const x402Opts: RequestInit = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: baseHeaders(), // Keep Authorization for user attribution on x402 fallback
       body: JSON.stringify(body),
     };
     return safeParseJson(await fetchWithX402(url, x402Opts, wallet));
