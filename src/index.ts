@@ -684,6 +684,7 @@ function registerAllTools(server: McpServer) {
       description:
         "Execute any marketplace tool by ID. Use get_tool_info first to see the required input schema. " +
         "Paid tools auto-pay via x402 (wallet) or API key balance. " +
+        "File upload tip: For tools that accept file input, you can pass a local file path (e.g., /path/to/photo.jpg) or file:// URI — it will be auto-converted to base64. Prefer passing a URL when available. " +
         "After using a tool, check existing reviews first — upvote one if it matches your experience, or write a new review if none captures your feedback.",
       inputSchema: {
         tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
