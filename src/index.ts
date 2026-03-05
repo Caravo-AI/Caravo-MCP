@@ -284,30 +284,56 @@ function stripDangerousFields(input: Record<string, unknown>): Record<string, un
   return cleaned;
 }
 
+const MIME_MAP: Record<string, string> = {
+  ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+  ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+  ".svg": "image/svg+xml", ".tif": "image/tiff", ".tiff": "image/tiff",
+  ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg",
+  ".pdf": "application/pdf",
+};
+
+const FILE_EXTENSIONS = new Set(Object.keys(MIME_MAP));
+
 /**
- * Resolve local file paths in tool input to base64.
- * Detects file:// URIs and absolute paths with image extensions.
- * Runs locally so base64 never enters the LLM context.
+ * Resolve local file paths in tool input to data URIs.
+ * Detects file:// URIs, absolute paths, ~/ and ./ paths with known extensions.
+ * Data URIs preserve MIME type so the server can upload to Fal Storage.
  */
 function resolveLocalFiles(input: Record<string, unknown>): Record<string, unknown> {
   const result = { ...input };
   for (const [key, value] of Object.entries(result)) {
     if (typeof value !== "string") continue;
+    // Skip URLs and existing data URIs
+    if (/^https?:\/\//i.test(value) || /^data:/i.test(value)) continue;
     const filePath = toLocalPath(value);
     if (!filePath) continue;
     if (!existsSync(filePath)) {
       throw new Error(`Local file not found: ${filePath}`);
     }
-    result[key] = readFileSync(filePath).toString("base64");
+    const data = readFileSync(filePath);
+    const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
+    const mime = MIME_MAP[ext] || "application/octet-stream";
+    result[key] = `data:${mime};base64,${data.toString("base64")}`;
+    process.stderr.write(`[caravo] file → data URI: ${filePath} (${mime}, ${data.length} bytes)\n`);
   }
   return result;
 }
 
 function toLocalPath(value: string): string | null {
-  if (value.startsWith("file:///")) return value.slice(7);
-  if (value.startsWith("file://")) return value.slice(7);
-  if (/^\//.test(value) && /\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/i.test(value)) return value;
-  return null;
+  let path: string | null = null;
+  if (value.startsWith("file://")) {
+    path = value.slice(7);
+  } else if (value.startsWith("~/")) {
+    path = join(homedir(), value.slice(2));
+  } else if (value.startsWith("./") || value.startsWith("../")) {
+    path = join(process.cwd(), value);
+  } else if (/^\//.test(value)) {
+    path = value;
+  }
+  if (!path) return null;
+  const ext = path.substring(path.lastIndexOf(".")).toLowerCase();
+  return FILE_EXTENSIONS.has(ext) ? path : null;
 }
 
 // ─── Tool types (from server) ─────────────────────────────────────────────────
@@ -690,7 +716,7 @@ function registerAllTools(server: McpServer) {
       description:
         "Execute any marketplace tool by ID. Use get_tool_info first to see the required input schema. " +
         "Paid tools auto-pay via x402 (wallet) or API key balance. " +
-        "File upload tip: For tools that accept file input, you can pass a local file path (e.g., /path/to/photo.jpg) or file:// URI — it will be auto-converted to base64. Prefer passing a URL when available. " +
+        "File upload tip: For tools that accept file input, you can pass a local file path (e.g., /path/to/photo.jpg), ~/path, or file:// URI — it will be auto-uploaded to CDN. Prefer passing a URL when available. " +
         "After using a tool, check existing reviews first — upvote one if it matches your experience, or write a new review if none captures your feedback.",
       inputSchema: {
         tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
