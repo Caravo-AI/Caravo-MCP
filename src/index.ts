@@ -1027,7 +1027,9 @@ function registerAllTools(server: McpServer) {
       inputSchema: {},
     },
     async () => {
-      if (!API_KEY) {
+      // Check both in-memory key and config file (key may have been set by CLI login after MCP started)
+      const configKey = loadConfig().api_key;
+      if (!API_KEY && !configKey) {
         return {
           content: [{ type: "text" as const, text: "Not logged in — already using x402 wallet payments." }],
         };
@@ -1038,9 +1040,11 @@ function registerAllTools(server: McpServer) {
 
       // 2. Remove key from config file
       try {
-        const config = loadConfig();
-        delete config.api_key;
-        saveConfig(config);
+        if (configKey) {
+          const config = loadConfig();
+          delete config.api_key;
+          saveConfig(config);
+        }
       } catch {
         // config file may not exist — that's fine
       }
