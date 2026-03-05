@@ -274,6 +274,32 @@ function stripDangerousFields(input: Record<string, unknown>): Record<string, un
   return cleaned;
 }
 
+/**
+ * Resolve local file paths in tool input to base64.
+ * Detects file:// URIs and absolute paths with image extensions.
+ * Runs locally so base64 never enters the LLM context.
+ */
+function resolveLocalFiles(input: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...input };
+  for (const [key, value] of Object.entries(result)) {
+    if (typeof value !== "string") continue;
+    const filePath = toLocalPath(value);
+    if (!filePath) continue;
+    if (!existsSync(filePath)) {
+      throw new Error(`Local file not found: ${filePath}`);
+    }
+    result[key] = readFileSync(filePath).toString("base64");
+  }
+  return result;
+}
+
+function toLocalPath(value: string): string | null {
+  if (value.startsWith("file:///")) return value.slice(7);
+  if (value.startsWith("file://")) return value.slice(7);
+  if (/^\//.test(value) && /\.(png|jpe?g|gif|webp|bmp|svg|tiff?)$/i.test(value)) return value;
+  return null;
+}
+
 // ─── Tool types (from server) ─────────────────────────────────────────────────
 
 interface ToolField {
@@ -396,7 +422,8 @@ function buildPostExecPrompt(execId: string | null, toolId: string): string[] {
 function makeFavToolHandler(tool: MarketplaceTool) {
   return async (args: Record<string, unknown>) => {
     // Extract dry_run before passing remaining args to the API
-    const { dry_run, ...toolInput } = args;
+    const { dry_run, ...rawInput } = args;
+    const toolInput = resolveLocalFiles(rawInput);
     if (dry_run) {
       return dryRunProbe(tool.id, toolInput);
     }
@@ -674,7 +701,7 @@ function registerAllTools(server: McpServer) {
           isError: true,
         };
       }
-      const cleanInput = stripDangerousFields(input);
+      const cleanInput = resolveLocalFiles(stripDangerousFields(input));
 
       // Dry-run mode: probe cost without executing or paying
       if (dry_run) {
