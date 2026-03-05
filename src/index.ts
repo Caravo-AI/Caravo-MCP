@@ -42,6 +42,16 @@ checkForUpdate("@caravo/mcp", VERSION).then((info) => {
   }
 });
 
+/** Append update notice to the last text content block in a tool response */
+function appendUpdateNotice<T extends { content: Array<{ type: string; text?: string }> }>(result: T): T {
+  if (!pendingUpdate) return result;
+  const lastText = [...result.content].reverse().find((c) => c.type === "text" && c.text);
+  if (lastText && lastText.text) {
+    lastText.text += `\n\n⚠ Caravo MCP update available: ${pendingUpdate.current} → ${pendingUpdate.latest}. Restart the MCP server to auto-update.`;
+  }
+  return result;
+}
+
 // ─── Shared description blocks (used in both `instructions` and `search_tools`) ─
 
 const ABOUT_CARAVO =
@@ -425,7 +435,7 @@ function makeFavToolHandler(tool: MarketplaceTool) {
     const { dry_run, ...rawInput } = args;
     const toolInput = resolveLocalFiles(rawInput);
     if (dry_run) {
-      return dryRunProbe(tool.id, toolInput);
+      return appendUpdateNotice(await dryRunProbe(tool.id, toolInput));
     }
 
     try {
@@ -440,27 +450,27 @@ function makeFavToolHandler(tool: MarketplaceTool) {
           ...formatOutput(result.output),
           ...reviewLines,
         ];
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        });
       }
 
       if (result.x402Version || result.accepts) {
         const price = `$${tool.pricing.price_per_call}`;
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: buildPaymentRequiredMessage(price) }],
           isError: true,
-        };
+        });
       }
 
-      return {
+      return appendUpdateNotice({
         content: [
           { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
         ],
         isError: true,
-      };
+      });
     } catch (err) {
-      return {
+      return appendUpdateNotice({
         content: [
           {
             type: "text" as const,
@@ -468,7 +478,7 @@ function makeFavToolHandler(tool: MarketplaceTool) {
           },
         ],
         isError: true,
-      };
+      });
     }
   };
 }
@@ -629,18 +639,14 @@ function registerAllTools(server: McpServer) {
         params.set("per_page", String(per_page));
         params.set("view", "agent");
         const data = await apiGet(`/api/tools?${params}`);
-        let text = safeJsonText(data);
-        if (pendingUpdate) {
-          text += `\n\n[Update available: @caravo/mcp ${pendingUpdate.current} → ${pendingUpdate.latest}. Will auto-update on next MCP restart.]`;
-        }
-        return {
-          content: [{ type: "text" as const, text }],
-        };
+        return appendUpdateNotice({
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -665,14 +671,14 @@ function registerAllTools(server: McpServer) {
       }
       try {
         const data = await apiGet(`/api/tools/${tool_id.trim()}`);
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: safeJsonText(data) }],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -697,16 +703,16 @@ function registerAllTools(server: McpServer) {
     async ({ tool_id, input, dry_run }) => {
       const validationError = validateToolId(tool_id);
       if (validationError) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${validationError}` }],
           isError: true,
-        };
+        });
       }
       const cleanInput = resolveLocalFiles(stripDangerousFields(input));
 
       // Dry-run mode: probe cost without executing or paying
       if (dry_run) {
-        return dryRunProbe(tool_id.trim(), cleanInput);
+        return appendUpdateNotice(await dryRunProbe(tool_id.trim(), cleanInput));
       }
 
       try {
@@ -721,29 +727,29 @@ function registerAllTools(server: McpServer) {
             ...formatOutput(result.output),
             ...reviewLines,
           ];
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: lines.join("\n") }],
-          };
+          });
         }
 
         if (result.x402Version || result.accepts) {
           const price = result.accepts?.[0]?.amount
             ? `$${(parseInt(result.accepts[0].amount) / 1e6).toFixed(6)}`
             : "?";
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: buildPaymentRequiredMessage(price) }],
             isError: true,
-          };
+          });
         }
 
-        return {
+        return appendUpdateNotice({
           content: [
             { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
           ],
           isError: true,
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [
             {
               type: "text" as const,
@@ -751,7 +757,7 @@ function registerAllTools(server: McpServer) {
             },
           ],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -812,13 +818,13 @@ function registerAllTools(server: McpServer) {
                 lines.push(`This was a 5/5 review — consider saving tool_id="${upvotedToolId}" to your memory for future reuse.`);
               }
             }
-            return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+            return appendUpdateNotice({ content: [{ type: "text" as const, text: lines.join("\n") }] });
           }
 
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: result.error ? `Error: ${result.error}` : safeJsonText(result) }],
             isError: true,
-          };
+          });
         }
 
         // New review mode
@@ -849,10 +855,10 @@ function registerAllTools(server: McpServer) {
         });
 
         if (result.error) {
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: `Error: ${result.error}` }],
             isError: true,
-          };
+          });
         }
 
         // The API returns the review record with tool_id derived from execution
@@ -867,12 +873,12 @@ function registerAllTools(server: McpServer) {
             lines.push(`This tool scored 5/5 — consider saving tool_id="${reviewToolId}" to your memory for future reuse.`);
           }
         }
-        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        return appendUpdateNotice({ content: [{ type: "text" as const, text: lines.join("\n") }] });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -942,14 +948,14 @@ function registerAllTools(server: McpServer) {
         info.note = "Send USDC on Base to this address to enable automatic x402 payments.";
       }
 
-      return {
+      return appendUpdateNotice({
         content: [
           {
             type: "text" as const,
             text: JSON.stringify(info, null, 2),
           },
         ],
-      };
+      });
     }
   );
 
@@ -1115,14 +1121,14 @@ function registerAllTools(server: McpServer) {
     async () => {
       try {
         const data = await apiGet("/api/tags");
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: safeJsonText(data) }],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1138,14 +1144,14 @@ function registerAllTools(server: McpServer) {
     async () => {
       try {
         const data = await apiGet("/api/providers");
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: safeJsonText(data) }],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1179,14 +1185,14 @@ function registerAllTools(server: McpServer) {
         params.set("page", String(page));
         params.set("per_page", String(per_page));
         const data = await apiGet(`/api/tool-requests?${params}`);
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: safeJsonText(data) }],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1217,13 +1223,13 @@ function registerAllTools(server: McpServer) {
         });
 
         if (result.error) {
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: `Error: ${result.error}` }],
             isError: true,
-          };
+          });
         }
 
-        return {
+        return appendUpdateNotice({
           content: [
             {
               type: "text" as const,
@@ -1236,12 +1242,12 @@ function registerAllTools(server: McpServer) {
               ].join("\n"),
             },
           ],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1264,21 +1270,21 @@ function registerAllTools(server: McpServer) {
         });
 
         if (result.error) {
-          return {
+          return appendUpdateNotice({
             content: [{ type: "text" as const, text: `Error: ${result.error}` }],
             isError: true,
-          };
+          });
         }
 
         const action = result.action === "already_upvoted" ? "Already upvoted" : "Upvoted";
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `✓ ${action} tool request ${request_id}` }],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1313,7 +1319,7 @@ function registerAllTools(server: McpServer) {
           };
         }
         const tools: MarketplaceTool[] = result.data ?? [];
-        return {
+        return appendUpdateNotice({
           content: [
             {
               type: "text" as const,
@@ -1329,12 +1335,12 @@ function registerAllTools(server: McpServer) {
               }),
             },
           ],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1381,7 +1387,7 @@ function registerAllTools(server: McpServer) {
           registerFavTool(server, tool);
         }
 
-        return {
+        return appendUpdateNotice({
           content: [
             {
               type: "text" as const,
@@ -1393,12 +1399,12 @@ function registerAllTools(server: McpServer) {
               ].join("\n"),
             },
           ],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
@@ -1443,7 +1449,7 @@ function registerAllTools(server: McpServer) {
           registeredFavTools.delete(tool_id);
         }
 
-        return {
+        return appendUpdateNotice({
           content: [
             {
               type: "text" as const,
@@ -1452,12 +1458,12 @@ function registerAllTools(server: McpServer) {
                 : `"${tool_id}" was not in your favorites.`,
             },
           ],
-        };
+        });
       } catch (err) {
-        return {
+        return appendUpdateNotice({
           content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
           isError: true,
-        };
+        });
       }
     }
   );
