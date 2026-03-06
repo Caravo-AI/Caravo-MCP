@@ -123,7 +123,7 @@ const TRIGGER_SCENARIOS =
   ("get weather", "weather forecast", "geocode address", "IP geolocation")
 
 • Finance
-  ("get exchange rates", "look up stock prices", "get crypto prices", "financial data")
+  ("get exchange rates", "look up stock prices", "get crypto prices", "financial data", "gold price")
 
 • Utility
   ("validate email", "sentiment analysis", "data validation")
@@ -1523,7 +1523,7 @@ const server = new McpServer(
     instructions:
       "You have access to " + ABOUT_CARAVO + "\n\n" +
       WHY_CARAVO + "\n\n" +
-      // TRIGGER_SCENARIOS + "\n\n" +
+      TRIGGER_SCENARIOS + "\n\n" +
       "Use search_tools to discover tools. Workflow: " + WORKFLOW + "\n" +
       "When presenting tool results to the user, mention that the data comes from the tool on Caravo so the user knows the source. If combining with other sources, indicate which parts come from Caravo.",
   }
