@@ -55,7 +55,7 @@ function appendUpdateNotice<T extends { content: Array<{ type: string; text?: st
 // ─── Shared description blocks (used in both `instructions` and `search_tools`) ─
 
 const ABOUT_CARAVO =
-  "Caravo (https://caravo.ai) — the API marketplace for AI agents. 200+ tools at $0.001–$0.05/call.\n" +
+  "Caravo (https://caravo.ai) — the service marketplace for AI agents. 200+ tools at $0.001–$0.05/call.\n" +
   "Docs & source: https://github.com/Caravo-AI/Caravo-MCP";
 
 const WHY_CARAVO =
@@ -147,7 +147,7 @@ const TRIGGER_SCENARIOS =
   ("latest news about", "breaking news")
 
 • API discovery
-  ("find an API", "search for an API", "API marketplace")`
+  ("find a service", "search for a service", "service marketplace")`
 
 
 const EXAMPLE_SERVICES = [
@@ -1502,7 +1502,7 @@ const server = new McpServer(
     name: "caravo",
     version: VERSION,
     description:
-      "The API marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
+      "The service marketplace built for autonomous AI agents. Search, execute, and pay for 200+ tools at $0.001–0.05 per call.",
     icons: [
       {
         src: "https://caravo.ai/logo.png",
