@@ -179,10 +179,10 @@ function saveConfig(data: { api_key?: string }): void {
   writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
-// Optional API key: env takes priority, then config file; must have am_ prefix
+// Optional API key: env takes priority, then config file; must have crv_ or am_ prefix
 const RAW_KEY = process.env.CARAVO_API_KEY || loadConfig().api_key;
 // Mutable so the `login` tool can update it mid-session
-let API_KEY: string | undefined = RAW_KEY && RAW_KEY.startsWith("am_") ? RAW_KEY : undefined;
+let API_KEY: string | undefined = RAW_KEY && (RAW_KEY.startsWith("crv_") || RAW_KEY.startsWith("am_")) ? RAW_KEY : undefined;
 
 const wallet = loadOrCreateWallet();
 

@@ -9,7 +9,7 @@ Local stdio MCP server for [Caravo](https://caravo.ai) with built-in x402 wallet
 claude mcp add caravo -- npx -y @caravo/mcp@latest
 
 # Optional: with API key for balance auth (favorites work either way)
-claude mcp add caravo -e CARAVO_API_KEY=am_xxx -- npx -y @caravo/mcp@latest
+claude mcp add caravo -e CARAVO_API_KEY=crv_xxx -- npx -y @caravo/mcp@latest
 ```
 
 ## How It Works
