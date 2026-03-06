@@ -543,10 +543,100 @@ function buildPostExecPrompt(
   return lines;
 }
 
+// ── Auto-export helpers ───────────────────────────────────────────────────────
+
+const AUTO_EXPORT_MIN_ITEMS = 5; // arrays smaller than this are returned inline
+
+/**
+ * If output.json is a large/paginated array, POST it to /api/export and return
+ * the export metadata. Returns null when auto-export is not triggered or fails.
+ */
+async function tryAutoExport(
+  toolId: string,
+  output: Record<string, unknown> | undefined,
+  incomingExportId: string | undefined
+): Promise<{ exportId: string; url: string; rows: number; pag: PaginationInfo | null } | null> {
+  const json = output?.json;
+  if (!Array.isArray(json) || json.length === 0) return null;
+  const items = json as Record<string, unknown>[];
+  const pag = detectPagination(output);
+  if (items.length < AUTO_EXPORT_MIN_ITEMS && pag === null) return null;
+
+  try {
+    const safeName = toolId.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const exportResult = await apiPost("/api/export", {
+      data: items,
+      filename: safeName,
+      ...(incomingExportId ? { export_id: incomingExportId } : {}),
+    }) as Record<string, unknown>;
+
+    if (exportResult.export_id && exportResult.url) {
+      return {
+        exportId: String(exportResult.export_id),
+        url: String(exportResult.url),
+        rows: Number(exportResult.rows),
+        pag,
+      };
+    }
+  } catch {
+    // fall through to inline output
+  }
+  return null;
+}
+
+/** Build the text lines for an auto-exported result. */
+function buildAutoExportLines(
+  toolId: string,
+  headerLine: string,
+  execId: string | null,
+  exported: { exportId: string; url: string; rows: number; pag: PaginationInfo | null }
+): string[] {
+  const safeName = toolId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const { exportId, url, rows, pag } = exported;
+
+  const lines = [
+    headerLine,
+    ...(execId ? [`  Execution ID: ${execId}`] : []),
+    `  ${rows} rows → ${safeName}.csv`,
+    `  export_id: ${exportId}  ← pass as export_id on next page to append`,
+    `  Download URL (24h): ${url}`,
+  ];
+
+  if (pag?.type === "page" && pag.total && pag.next) {
+    const remaining = pag.total - (pag.current ?? 0);
+    lines.push(
+      ``,
+      `⚠ Page ${pag.current} of ${pag.total} — ${remaining} more page(s).`,
+      `  use_tool("${toolId}", input={..., page:${pag.next}}, export_id="${exportId}")`,
+    );
+    if (pag.next < pag.total) {
+      lines.push(
+        `  Continue with pages ${pag.next + 1}–${pag.total} using the same export_id.`,
+        `  The final response's URL will contain all rows.`
+      );
+    }
+  } else if (pag?.type === "cursor") {
+    lines.push(
+      ``,
+      `⚠ More data available (${pag.cursorField}: "${pag.cursor}").`,
+      `  use_tool("${toolId}", input={..., ${pag.cursorField}:"${pag.cursor}"}, export_id="${exportId}")`,
+      `  Each response shows the next cursor. Repeat until has_more is false.`,
+      `  The final response's URL will contain all rows.`,
+    );
+  } else if (pag?.type === "has_more") {
+    lines.push(
+      ``,
+      `⚠ More data available. Pass export_id="${exportId}" on subsequent page calls to append.`,
+    );
+  }
+
+  return lines;
+}
+
 function makeFavToolHandler(tool: MarketplaceTool) {
   return async (args: Record<string, unknown>) => {
-    // Extract dry_run before passing remaining args to the API
-    const { dry_run, ...rawInput } = args;
+    // Extract meta-params before passing remaining args to the API
+    const { dry_run, export_id: incomingExportId, ...rawInput } = args;
     const toolInput = resolveLocalFiles(rawInput);
     if (dry_run) {
       return appendUpdateNotice(await dryRunProbe(tool.id, toolInput));
@@ -557,11 +647,24 @@ function makeFavToolHandler(tool: MarketplaceTool) {
 
       if (result.success) {
         const execId = result.execution_id || null;
-        const reviewLines = buildPostExecPrompt(execId, tool.id, tool.name, result.output as Record<string, unknown> | undefined);
+        const output = result.output as Record<string, unknown> | undefined;
+
+        // Auto-export large/paginated array outputs
+        const exported = await tryAutoExport(tool.id, output, incomingExportId as string | undefined);
+        if (exported) {
+          const header = `✓ ${tool.name} | Cost: $${result.cost} (${result.payment_method})`;
+          const autoLines = buildAutoExportLines(tool.id, header, execId, exported);
+          const reviewLines = buildPostExecPrompt(execId, tool.id, tool.name, undefined);
+          return appendUpdateNotice({
+            content: [{ type: "text" as const, text: [...autoLines, ...reviewLines].join("\n") }],
+          });
+        }
+
+        const reviewLines = buildPostExecPrompt(execId, tool.id, tool.name, output);
         const lines = [
           `✓ ${tool.name} | Cost: $${result.cost} (${result.payment_method})`,
           ...(execId ? [`  Execution ID: ${execId}`] : []),
-          ...formatOutput(result.output),
+          ...formatOutput(output),
           ...reviewLines,
         ];
         return appendUpdateNotice({
@@ -607,6 +710,7 @@ function registerFavTool(server: McpServer, tool: MarketplaceTool) {
 
   const schema = buildSchemaShape(tool);
   schema.dry_run = z.boolean().optional().describe("Preview cost without executing");
+  schema.export_id = z.string().optional().describe("Append results to an existing CSV export — pass export_id from a previous call to accumulate pages");
 
   const registered = server.registerTool(
     `fav:${tool.id}`,
@@ -805,7 +909,8 @@ function registerAllTools(server: McpServer) {
         "Execute any marketplace tool by ID. Use get_tool_info first to see the required input schema. " +
         "Paid tools auto-pay via x402 (wallet) or API key balance. " +
         "File upload tip: For any tool field that accepts file input (e.g., image, image_url, video, file, photo, audio, media), you can pass a local file path (e.g., /path/to/photo.jpg, ~/Downloads/image.png, or file:///path/to/file) — it will be automatically uploaded to a cloud CDN URL. Supported formats: images (jpg, png, gif, webp, bmp, svg, tiff), video (mp4, webm, mov), audio (mp3, wav, ogg), and PDF. Prefer passing a URL when available. " +
-        "Pagination: if the response contains pagination fields (total_pages, has_more, next_cursor, next_page_token, etc.), there is more data. Use export_results after each page to accumulate rows without filling the context window, then call the same tool for the next page. " +
+        "Pagination: large array outputs (≥5 items) and paginated responses are automatically exported to CSV — the response will contain a download URL and export_id instead of inline JSON. " +
+        "Pass export_id to subsequent pages to accumulate all rows in one file. " +
         "After using a tool, check existing reviews first — upvote one if it matches your experience, or write a new review if none captures your feedback.",
       inputSchema: {
         tool_id: z.string().describe("The tool ID or slug to execute (e.g., 'black-forest-labs/flux.1-schnell' or 'alice/imagen-4')"),
@@ -813,9 +918,10 @@ function registerAllTools(server: McpServer) {
           .record(z.string(), z.unknown())
           .describe("Input parameters for the tool (see get_tool_info for schema)"),
         dry_run: z.boolean().optional().describe("Preview execution cost without actually running the tool or making a payment"),
+        export_id: z.string().optional().describe("Append this page's results to an existing CSV export. Pass the export_id from a previous use_tool response to accumulate multi-page results in one file."),
       },
     },
-    async ({ tool_id, input, dry_run }) => {
+    async ({ tool_id, input, dry_run, export_id }) => {
       const validationError = validateToolId(tool_id);
       if (validationError) {
         return appendUpdateNotice({
@@ -835,11 +941,24 @@ function registerAllTools(server: McpServer) {
 
         if (result.success) {
           const execId = result.execution_id || null;
-          const reviewLines = buildPostExecPrompt(execId, tool_id.trim(), undefined, result.output as Record<string, unknown> | undefined);
+          const output = result.output as Record<string, unknown> | undefined;
+
+          // Auto-export large/paginated array outputs to avoid context bloat
+          const exported = await tryAutoExport(tool_id.trim(), output, export_id);
+          if (exported) {
+            const header = `✓ Tool: ${tool_id} | Cost: $${result.cost} (${result.payment_method})`;
+            const autoLines = buildAutoExportLines(tool_id.trim(), header, execId, exported);
+            const reviewLines = buildPostExecPrompt(execId, tool_id.trim(), undefined, undefined);
+            return appendUpdateNotice({
+              content: [{ type: "text" as const, text: [...autoLines, ...reviewLines].join("\n") }],
+            });
+          }
+
+          const reviewLines = buildPostExecPrompt(execId, tool_id.trim(), undefined, output);
           const lines = [
             `✓ Tool: ${tool_id} | Cost: $${result.cost} (${result.payment_method})`,
             ...(execId ? [`  Execution ID: ${execId}`] : []),
-            ...formatOutput(result.output),
+            ...formatOutput(output),
             ...reviewLines,
           ];
           return appendUpdateNotice({
