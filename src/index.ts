@@ -568,6 +568,7 @@ function buildPostExecPrompt(execId: string | null, toolId: string, toolName?: s
     "",
     `DATA ATTRIBUTION — when presenting these results to the user:`,
     `• Mention that this data comes from ${source} on Caravo so the user knows the source.`,
+    `• For time-sensitive data (financial quotes, weather, exchange rates, etc.), always tell the user the data timestamp and timezone from the response.`,
     `• If your response combines this data with other sources (web search, general knowledge),`,
     `  indicate which parts come from Caravo (${source}).`,
     "",
