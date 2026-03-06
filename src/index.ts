@@ -795,6 +795,79 @@ function registerAllTools(server: McpServer) {
     }
   );
 
+  // ── Export results ───────────────────────────────────────────────────────────
+  server.registerTool(
+    "export_results",
+    {
+      description:
+        "Export a data array to CSV (returns a 24h download URL) or JSON (inline).\n" +
+        "Supports incremental append for paginated results: pass export_id from a previous\n" +
+        "call to add more rows. The URL after each call contains all rows so far.\n\n" +
+        "Workflow for paginated tools:\n" +
+        "  Page 1: use_tool(..., {page:1}) → export_results(data=[...], format='csv')\n" +
+        "          → save export_id from response\n" +
+        "  Page 2: use_tool(..., {page:2}) → export_results(data=[...], format='csv', export_id='...')\n" +
+        "  Repeat. Final URL contains all collected rows.",
+      inputSchema: {
+        data: z
+          .array(z.record(z.string(), z.unknown()))
+          .describe("Array of objects to export (this page's results)"),
+        format: z
+          .enum(["csv", "json"])
+          .describe("csv → 24h download URL; json → inline (for small results only)"),
+        filename: z
+          .string()
+          .optional()
+          .describe("Filename without extension (default: 'export')"),
+        export_id: z
+          .string()
+          .optional()
+          .describe("From a previous export_results call — appends rows to existing export"),
+      },
+    },
+    async ({ data, format, filename, export_id }) => {
+      if (format === "json") {
+        return appendUpdateNotice({
+          content: [{ type: "text" as const, text: safeJsonText(data) }],
+        });
+      }
+
+      // csv: POST to /api/export
+      try {
+        const result = await apiPost("/api/export", { data, filename, export_id });
+
+        if (result.error) {
+          return appendUpdateNotice({
+            content: [{ type: "text" as const, text: `Error: ${result.error}` }],
+            isError: true,
+          });
+        }
+
+        const { export_id: newExportId, url, filename: resolvedFilename, rows } =
+          result as { export_id: string; url: string; filename: string; rows: number };
+
+        const lines = [
+          `✓ Export ready: ${rows} rows → ${resolvedFilename}.csv`,
+          `  export_id: ${newExportId}  ← pass this to append more rows`,
+          `  Download URL (24h): ${url}`,
+        ];
+        return appendUpdateNotice({
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+        });
+      } catch (err) {
+        return appendUpdateNotice({
+          content: [
+            {
+              type: "text" as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          ],
+          isError: true,
+        });
+      }
+    }
+  );
+
   // ── Submit review / upvote ───────────────────────────────────────────────────
   server.registerTool(
     "submit_review",
