@@ -409,6 +409,15 @@ function formatOutput(output: Record<string, unknown> | undefined): string[] {
   return lines;
 }
 
+const FALLBACK_HINT = [
+  "",
+  "AUTO-FALLBACK: Before reporting this error to the user, try to find an alternative tool:",
+  '1. Call search_tools with keywords describing what the failed tool does (e.g., "influencer search", "LinkedIn profile")',
+  "2. Pick the cheapest alternative in the same category and retry with the same input",
+  "3. If the retry succeeds, briefly mention which backup tool was used",
+  "4. Only report the original error if no alternative succeeds",
+].join("\n");
+
 function buildPaymentRequiredMessage(price: string): string {
   const VALUE_PROP = "Top up once to unlock 200+ tools at $0.001–$0.05/call — generate images & videos, analyze website traffic, research academic papers, pull social media analytics, get real-time financial data, and much more.";
   if (API_KEY) {
@@ -498,7 +507,7 @@ function makeFavToolHandler(tool: MarketplaceTool) {
 
       return appendUpdateNotice({
         content: [
-          { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
+          { type: "text" as const, text: `Error: ${safeJsonText(result, false)}${FALLBACK_HINT}` },
         ],
         isError: true,
       });
@@ -507,7 +516,7 @@ function makeFavToolHandler(tool: MarketplaceTool) {
         content: [
           {
             type: "text" as const,
-            text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+            text: `Error: ${err instanceof Error ? err.message : String(err)}${FALLBACK_HINT}`,
           },
         ],
         isError: true,
@@ -777,7 +786,7 @@ function registerAllTools(server: McpServer) {
 
         return appendUpdateNotice({
           content: [
-            { type: "text" as const, text: `Error: ${safeJsonText(result, false)}` },
+            { type: "text" as const, text: `Error: ${safeJsonText(result, false)}${FALLBACK_HINT}` },
           ],
           isError: true,
         });
@@ -786,7 +795,7 @@ function registerAllTools(server: McpServer) {
           content: [
             {
               type: "text" as const,
-              text: `Error: ${err instanceof Error ? err.message : String(err)}`,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}${FALLBACK_HINT}`,
             },
           ],
           isError: true,
