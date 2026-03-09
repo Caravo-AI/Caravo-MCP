@@ -9,7 +9,7 @@
  * Automatically handles x402 USDC payments via the local wallet.
  *
  * Install (one-time):
- *   claude mcp add caravo --command "npx" --args "-y,@caravo/mcp@latest"
+ *   claude mcp add -s user caravo --command "npx" --args "-y,@caravo/mcp@latest"
  *
  * Fund wallet:
  *   Run get_wallet_info to find your address, then send USDC on Base.
